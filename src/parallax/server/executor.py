@@ -864,18 +864,22 @@ class Executor:
             max_new_tokens = 2048
         max_total_length = len(prompt) + max_new_tokens
 
-        raw_sampling_params = raw_request.get("sampling_params")
-        if raw_sampling_params is None:
-            sampling_params = SamplingParams()
-        else:
-            # TODO: Support more sampling params
-            sampling_params = SamplingParams()
-            if "temperature" in raw_sampling_params:
-                sampling_params.temperature = raw_sampling_params["temperature"]
-            if "top_k" in raw_sampling_params:
-                sampling_params.top_k = raw_sampling_params["top_k"]
-            if "top_p" in raw_sampling_params:
-                sampling_params.top_p = raw_sampling_params["top_p"]
+        # Support OpenAI-style top-level parameters by defaulting to raw_request if sampling_params is missing
+        raw_sampling_params = raw_request.get("sampling_params", raw_request)
+        
+        sampling_params = SamplingParams()
+        if "temperature" in raw_sampling_params:
+            sampling_params.temperature = float(raw_sampling_params["temperature"])
+        if "top_k" in raw_sampling_params:
+            sampling_params.top_k = int(raw_sampling_params["top_k"])
+        if "top_p" in raw_sampling_params:
+            sampling_params.top_p = float(raw_sampling_params["top_p"])
+        if "repetition_penalty" in raw_sampling_params:
+            sampling_params.repetition_penalty = float(raw_sampling_params["repetition_penalty"])
+        if "frequency_penalty" in raw_sampling_params:
+            sampling_params.frequency_penalty = float(raw_sampling_params["frequency_penalty"])
+        if "presence_penalty" in raw_sampling_params:
+            sampling_params.presence_penalty = float(raw_sampling_params["presence_penalty"])
 
         req = InitialRequest(
             request_id=rid,
