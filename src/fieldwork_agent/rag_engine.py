@@ -17,6 +17,31 @@ PARALLAX_API_BASE = "http://localhost:3001/v1"
 PARALLAX_API_KEY = "EMPTY"  # Parallax/vLLM usually doesn't require a real key for local
 MODEL_NAME = "parallax" # Or whatever model name the server expects, often ignored or "default"
 
+import re
+
+def clean_text(text: str) -> str:
+    """
+    Clean text by merging broken lines while preserving paragraph breaks.
+    """
+    # 1. Replace multiple newlines (paragraph breaks) with a placeholder
+    text = re.sub(r'\n\s*\n', '__PARAGRAPH__', text)
+    
+    # 2. Merge single newlines
+    # For Chinese: Remove newline between Chinese characters
+    # Regex: Lookbehind for Chinese, match newline, Lookahead for Chinese
+    text = re.sub(r'(?<=[\u4e00-\u9fa5])\n(?=[\u4e00-\u9fa5])', '', text)
+    
+    # For others (English/Mixed): Replace newline with space
+    text = text.replace('\n', ' ')
+    
+    # 3. Restore paragraph breaks
+    text = text.replace('__PARAGRAPH__', '\n\n')
+    
+    # 4. Collapse multiple spaces (but keep newlines)
+    text = re.sub(r'[ \t]+', ' ', text)
+    
+    return text.strip()
+
 def process_file(file_path: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[Document]:
     """
     Load and chunk a file (PDF or TXT).
@@ -29,6 +54,11 @@ def process_file(file_path: str, chunk_size: int = 1000, chunk_overlap: int = 20
         raise ValueError("Unsupported file type")
 
     documents = loader.load()
+    
+    # Clean content of each document
+    for doc in documents:
+        doc.page_content = clean_text(doc.page_content)
+        
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
