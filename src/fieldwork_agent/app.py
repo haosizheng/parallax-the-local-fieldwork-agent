@@ -1,5 +1,12 @@
 import streamlit as st
 import os
+
+from langchain_community.callbacks import StreamlitCallbackHandler
+
+# Set HuggingFace mirror for China access (must be before other imports)
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# Suppress tokenizers parallelism warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from rag_engine import process_file, get_vectorstore, get_qa_chain
 from utils import save_uploaded_file, cleanup_temp_file
 
@@ -11,6 +18,17 @@ st.markdown("### Secure, Local RAG for Qualitative Research")
 # Sidebar for File Upload
 with st.sidebar:
     st.header("Data Input")
+    
+    # Indexing Settings
+    with st.expander("⚙️ Indexing Settings", expanded=False):
+        chunk_size = st.slider("Chunk Size", 100, 2000, 1000, 100, help="Size of text chunks in characters.")
+        chunk_overlap = st.slider("Chunk Overlap", 0, 500, 200, 50, help="Overlap between chunks to maintain context.")
+
+    # Generation Settings
+    with st.expander("🤖 Generation Settings", expanded=False):
+        temperature = st.slider("Temperature", 0.0, 1.0, 0.6, 0.1, help="Creativity of the model. Higher = more creative.")
+        top_k = st.slider("Top-K Retrieval", 1, 30, 5, 1, help="Number of document chunks to retrieve.")
+
     uploaded_file = st.file_uploader("Upload Interview Transcript", type=["txt", "pdf"])
     
     if uploaded_file is not None:
@@ -22,7 +40,7 @@ with st.sidebar:
                 if file_path:
                     try:
                         # Process and Chunk
-                        chunks = process_file(file_path)
+                        chunks = process_file(file_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                         st.info(f"Created {len(chunks)} chunks.")
                         
                         # Create/Update Vector Store
@@ -49,6 +67,9 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if "sources" in message:
+            with st.expander("View Source Context"):
+                st.markdown(message["sources"])
 
 # Accept user input
 if prompt := st.chat_input("What would you like to know about the interview?"):
@@ -60,28 +81,46 @@ if prompt := st.chat_input("What would you like to know about the interview?"):
 
     # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            try:
-                # Load existing vectorstore
-                vectorstore = get_vectorstore()
-                qa_chain = get_qa_chain(vectorstore)
+        # Use StreamlitCallbackHandler to show "Thinking" process
+        st_callback = StreamlitCallbackHandler(st.container())
+        try:
+            # Load existing vectorstore
+            vectorstore = get_vectorstore()
+            qa_chain = get_qa_chain(vectorstore, temperature=temperature, k=top_k)
+            
+            if top_k > 10:
+                st.warning("⚠️ High Top-K (10+) may cause memory issues or slow performance on local devices.")
+            
+            st.write("Debug: Starting retrieval and generation...")
+            
+            response = qa_chain.invoke(
+                {"query": prompt},
+                config={"callbacks": [st_callback]}
+            )
+            answer = response["result"]
+            source_docs = response["source_documents"]
+            
+            # Note: StreamlitCallbackHandler might have already printed the answer.
+            # We print it again cleanly to ensure it's in the history and formatted correctly.
+            # If it looks duplicated, we can adjust later, but this ensures persistence.
+            st.markdown(answer)
                 
-                response = qa_chain.invoke({"query": prompt})
-                answer = response["result"]
-                source_docs = response["source_documents"]
+            # Format sources
+            sources_text = ""
+            for i, doc in enumerate(source_docs):
+                sources_text += f"**Source {i+1}:**\n> {doc.page_content}\n\n---\n\n"
+            
+            # Display Sources
+            with st.expander("View Source Context"):
+                st.markdown(sources_text)
+            
+            # Add assistant response to chat history with sources
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": answer,
+                "sources": sources_text
+            })
                 
-                st.markdown(answer)
-                
-                # Display Sources
-                with st.expander("View Source Context"):
-                    for i, doc in enumerate(source_docs):
-                        st.markdown(f"**Source {i+1}:**")
-                        st.markdown(f"> {doc.page_content}")
-                        st.markdown("---")
-                
-                # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                
-            except Exception as e:
-                st.error(f"Error generating response: {e}")
-                st.info("Make sure you have indexed a document and Parallax is running.")
+        except Exception as e:
+            st.error(f"Error generating response: {e}")
+            st.info("Make sure you have indexed a document and Parallax is running.")

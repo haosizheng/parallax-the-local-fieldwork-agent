@@ -17,7 +17,7 @@ PARALLAX_API_BASE = "http://localhost:3001/v1"
 PARALLAX_API_KEY = "EMPTY"  # Parallax/vLLM usually doesn't require a real key for local
 MODEL_NAME = "parallax" # Or whatever model name the server expects, often ignored or "default"
 
-def process_file(file_path: str) -> List[Document]:
+def process_file(file_path: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[Document]:
     """
     Load and chunk a file (PDF or TXT).
     """
@@ -30,8 +30,8 @@ def process_file(file_path: str) -> List[Document]:
 
     documents = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         length_function=len,
         is_separator_regex=False,
     )
@@ -49,21 +49,35 @@ def get_vectorstore(chunks: Optional[List[Document]] = None, reset: bool = False
 
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
     
-    if chunks:
-        vectorstore = Chroma.from_documents(
-            documents=chunks,
-            embedding=embeddings,
-            persist_directory=CHROMA_PATH
-        )
-    else:
-        vectorstore = Chroma(
-            persist_directory=CHROMA_PATH,
-            embedding_function=embeddings
-        )
+    try:
+        if chunks:
+            vectorstore = Chroma.from_documents(
+                documents=chunks,
+                embedding=embeddings,
+                persist_directory=CHROMA_PATH
+            )
+        else:
+            vectorstore = Chroma(
+                persist_directory=CHROMA_PATH,
+                embedding_function=embeddings
+            )
+    except Exception as e:
+        # Auto-recovery for corrupted DB
+        if "Could not connect to tenant" in str(e) or "sqlite3.OperationalError" in str(e):
+            print(f"Detected corrupted database: {e}. Resetting...")
+            if os.path.exists(CHROMA_PATH):
+                shutil.rmtree(CHROMA_PATH)
+            # Retry creation (will be empty if no chunks provided, but prevents crash)
+            vectorstore = Chroma(
+                persist_directory=CHROMA_PATH,
+                embedding_function=embeddings
+            )
+        else:
+            raise e
     
     return vectorstore
 
-def get_qa_chain(vectorstore: Chroma):
+def get_qa_chain(vectorstore: Chroma, temperature: float = 0.6, k: int = 5):
     """
     Create a RetrievalQA chain using Parallax as the LLM.
     """
@@ -73,12 +87,13 @@ def get_qa_chain(vectorstore: Chroma):
         openai_api_base=PARALLAX_API_BASE,
         openai_api_key=PARALLAX_API_KEY,
         model_name=MODEL_NAME,
-        temperature=0.6,  # Higher temperature to reduce loops
+        temperature=temperature,  # Dynamic temperature
         # Pass repetition_penalty via extra_body (supported by ChatOpenAI as a root arg)
-        extra_body={"repetition_penalty": 1.1}
+        extra_body={"repetition_penalty": 1.1},
+        streaming=True,
     )
     
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5}) # Increase k to get more context
+    retriever = vectorstore.as_retriever(search_kwargs={"k": k}) # Dynamic k
     
     # Custom Prompt Template
     template = """Use the following pieces of context to answer the question at the end. 
