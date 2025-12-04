@@ -167,6 +167,7 @@ if __name__ == "__main__":
     is_local_network = args.is_local_network
     if model_name is not None and init_nodes_num is not None:
         scheduler_manage.run(model_name, init_nodes_num, is_local_network)
+        logger.info(f"Scheduler Peer ID: {scheduler_manage.get_peer_id()}")
 
     host = args.host
     port = args.port

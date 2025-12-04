@@ -7,6 +7,7 @@ echo ""
 
 # Enter project directory
 cd /Users/shibi/Documents/cursor-test/gradient/parallax
+rm -f scheduler.log
 
 # Activate virtual environment
 source venv/bin/activate
@@ -22,4 +23,4 @@ echo ""
 export PARALLAX_HOST_MADDRS="/ip4/127.0.0.1/tcp/8888"
 
 # Start scheduler
-parallax run -m "$MODEL_PATH" -n 1
+parallax run -m "$MODEL_PATH" -n 1 | tee scheduler.log

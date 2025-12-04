@@ -14,10 +14,15 @@ class RAGManager:
         self.client = chromadb.PersistentClient(path=storage_path)
         
         # Initialize Embedding Model
-        # all-MiniLM-L6-v2 is fast and effective for this scale
-        print("DEBUG: Loading Embedding Model...")
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        print("DEBUG: Embedding Model Loaded.")
+        # Lazy load to prevent blocking startup
+        self.embedding_model = None
+        
+    def _get_model(self):
+        if self.embedding_model is None:
+            print("DEBUG: Loading Embedding Model...")
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("DEBUG: Embedding Model Loaded.")
+        return self.embedding_model
 
     def _extract_text(self, file_content: bytes, filename: str) -> str:
         """Extracts text from PDF or TXT bytes."""
@@ -78,7 +83,7 @@ class RAGManager:
         
         # ChromaDB can compute embeddings automatically if we don't provide them,
         # but we'll do it explicitly to control the model.
-        embeddings = self.embedding_model.encode(chunks).tolist()
+        embeddings = self._get_model().encode(chunks).tolist()
         
         collection.add(
             documents=chunks,
@@ -98,7 +103,7 @@ class RAGManager:
             print(f"DEBUG: No knowledge base found for {judge_id}")
             return []
             
-        query_embedding = self.embedding_model.encode([query]).tolist()
+        query_embedding = self._get_model().encode([query]).tolist()
         
         results = collection.query(
             query_embeddings=query_embedding,
