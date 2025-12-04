@@ -310,7 +310,8 @@ async def main_page():
                         ui.label('AGENT A: FEMINIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_a_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
                         # Interrogation Button
-                        btn_a = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_a_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
+                        btn_a = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_a_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
+                        btn_a.disable()
                 
                 # Agent B
                 with ui.card().classes('h-full w-full p-0'):
@@ -318,7 +319,8 @@ async def main_page():
                         ui.label('AGENT B: MARXIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_b_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
                         # Interrogation Button
-                        btn_b = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_b_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
+                        btn_b = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_b_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
+                        btn_b.disable()
 
                 # Agent C
                 with ui.card().classes('h-full w-full p-0'):
@@ -326,7 +328,8 @@ async def main_page():
                         ui.label('AGENT C: BIOLOGICAL').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_c_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
                         # Interrogation Button
-                        btn_c = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_c_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
+                        btn_c = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_c_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
+                        btn_c.disable()
 
             # Verdict Area
             with ui.card().classes('w-full h-1/3 tribunal-verdict mt-4 border-red-500 p-0'):
