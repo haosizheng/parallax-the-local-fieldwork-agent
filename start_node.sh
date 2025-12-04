@@ -24,4 +24,11 @@ echo "✅ 已设置下载超时: 300 秒"
 echo "🔗 正在连接到调度器..."
 echo ""
 
-parallax join
+# Force binding to localhost
+export PARALLAX_HOST_MADDRS="/ip4/127.0.0.1/tcp/0"
+
+# Manual peering: Connect to Scheduler at localhost:8888 with known Peer ID
+# Peer ID from logs: 12D3KooWE2A6KUYbrkKWgYdTDNyKiBR7yyfTNywEscEtAj5GPMJq
+SCHEDULER_ADDR="/ip4/127.0.0.1/tcp/8888/p2p/12D3KooWE2A6KUYbrkKWgYdTDNyKiBR7yyfTNywEscEtAj5GPMJq"
+
+parallax join -s "$SCHEDULER_ADDR"

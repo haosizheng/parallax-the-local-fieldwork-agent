@@ -280,7 +280,6 @@ class TribunalState:
         self.is_processing = False
         # Initialize with first 3 default judges
         self.selected_judges: List[Dict] = judge_manager.get_default_judges()
-        self.agent_instances: List[TribunalAgent] = [] # Track active agents
 
 state = TribunalState()
 
@@ -289,6 +288,9 @@ state = TribunalState()
 async def main_page():
     ui.add_head_html(f'<style>{GLOBAL_CSS}</style>')
     
+    # Local state for this client session
+    agent_instances: List[TribunalAgent] = [] 
+
     # Layout
     with ui.row().classes('w-full h-screen no-wrap'):
         # Sidebar
@@ -297,7 +299,10 @@ async def main_page():
             
             confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-40 mb-4 bg-transparent border border-green-500 p-2 text-green-500')
             
-            submit_btn = ui.button('SUBMIT FOR JUDGMENT').classes('w-full mb-4 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black')
+            submit_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=lambda: run_tribunal()).classes('w-full mb-0 bg-green-900 text-black font-bold hover:bg-green-700')
+            
+            # Log Area
+            # log_container = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2 font-mono text-xs text-green-500')
             
             # --- Manage Database Button ---
             async def open_manage_database():
@@ -366,7 +371,7 @@ async def main_page():
 
                 db_dialog.open()
 
-            ui.button('MANAGE DATABASE', on_click=open_manage_database).classes('w-full mb-8 border border-green-900 text-green-900 hover:text-green-500 text-xs')
+            ui.button('PROTOCOL DATABASE', on_click=open_manage_database).classes('w-full mt-4 border border-green-900 text-green-700 hover:bg-green-900 hover:text-black')
             
             ui.label('SYSTEM LOGS:').classes('mb-2 font-bold')
             log_container = ui.scroll_area().classes('w-full h-full border border-green-500 p-2 bg-black')
@@ -397,7 +402,7 @@ async def main_page():
 
             def render_agents_grid():
                 agents_grid.clear()
-                state.agent_instances = [] # Reset active agents list
+                agent_instances.clear() # Clear local list
                 
                 with agents_grid:
                     for i, judge_data in enumerate(state.selected_judges):
@@ -412,7 +417,7 @@ async def main_page():
                                 
                                 # Create Agent Instance
                                 agent = TribunalAgent(judge_data['name'], judge_data['system_prompt'], container)
-                                state.agent_instances.append(agent)
+                                agent_instances.append(agent)
                                 
                                 # Interrogation Button
                                 btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
@@ -422,10 +427,9 @@ async def main_page():
             render_agents_grid() # Initial Render
 
             # Verdict Area
-            with ui.card().classes('w-full h-1/3 tribunal-verdict mt-4 border-red-500 p-0'):
-                with ui.column().classes('w-full h-full gap-0 no-wrap'):
-                    ui.label('FINAL VERDICT').classes('tribunal-card-header w-full text-center bg-red-900 text-black font-bold text-xl')
-                    verdict_container = ui.scroll_area().classes('p-4 w-full flex-grow bg-black border-t border-red-500 text-red-500 text-lg text-left')
+            with ui.card().classes('w-full h-2/3 tribunal-verdict mt-4 border-red-500 p-0'):
+                ui.label('FINAL JUDGMENT').classes('w-full bg-red-900 text-black font-bold p-2 text-center')
+                verdict_container = ui.scroll_area().classes('w-full h-full bg-black p-4 text-red-500 font-mono whitespace-pre-wrap')
 
     # --- Orchestration Logic ---
     async def run_tribunal():
@@ -439,17 +443,17 @@ async def main_page():
         confession_input.disable()
         
         # Reset Buttons
-        for agent in state.agent_instances:
+        for agent in agent_instances:
             if agent.interrogation_btn:
                 agent.interrogation_btn.disable()
         
         await log_message("INITIATING TRIBUNAL PROTOCOLS...", log_container)
         
         # Run Agents in Parallel
-        await log_message(f"DEPLOYING {len(state.agent_instances)} AGENTS...", log_container)
+        await log_message(f"DEPLOYING {len(agent_instances)} AGENTS...", log_container)
         
         # Create tasks for all active agents
-        tasks = [agent.analyze(confession) for agent in state.agent_instances]
+        tasks = [agent.analyze(confession) for agent in agent_instances]
         results = await asyncio.gather(*tasks)
         
         await log_message("AGENTS REPORTING COMPLETE.", log_container)
@@ -460,7 +464,7 @@ async def main_page():
         # Construct dynamic context for the judge
         judge_prompt_context = f"CONFESSION: {confession}\n\n"
         for i, res in enumerate(results):
-            agent_name = state.agent_instances[i].name
+            agent_name = agent_instances[i].name
             judge_prompt_context += f"AGENT {chr(65+i)} ({agent_name}) ANALYSIS: {res}\n\n"
         
         judge = TribunalAgent("Judge", PROMPT_JUDGE, verdict_container)
@@ -469,7 +473,7 @@ async def main_page():
         await log_message("JUDGMENT RENDERED. CASE CLOSED.", log_container)
         
         # Enable Interrogation Buttons
-        for agent in state.agent_instances:
+        for agent in agent_instances:
             if agent.interrogation_btn:
                 agent.interrogation_btn.enable()
         

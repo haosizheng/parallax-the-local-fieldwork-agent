@@ -18,5 +18,8 @@ echo "📁 Using local model: $MODEL_PATH"
 echo "🎯 Starting scheduler..."
 echo ""
 
+# Force binding to localhost on fixed port 8888 for manual peering
+export PARALLAX_HOST_MADDRS="/ip4/127.0.0.1/tcp/8888"
+
 # Start scheduler
 parallax run -m "$MODEL_PATH" -n 1

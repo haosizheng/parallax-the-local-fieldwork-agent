@@ -11,6 +11,7 @@ import dataclasses
 import enum
 import json
 import logging
+import os
 import threading
 import time
 from typing import List, Optional
@@ -162,18 +163,24 @@ class TransformerConnectionHandler(ConnectionHandler):
         request,
     ):
         """Handle chat completion request"""
+        logger.info(f"DEBUG: Node received chat_completion request")
         logger.debug(f"Chat completion request: {request}, type: {type(request)}")
         try:
+            logger.info(f"DEBUG: Node connecting to local HTTP server at port {self.http_port}")
             with httpx.Client(timeout=10 * 60, proxy=None, trust_env=False) as client:
                 if request.get("stream", False):
+                    logger.info("DEBUG: Node starting stream request to local HTTP")
                     with client.stream(
                         "POST",
                         f"http://localhost:{self.http_port}/v1/chat/completions",
                         json=request,
                     ) as response:
+                        logger.info("DEBUG: Node received response headers from local HTTP")
                         for chunk in response.iter_bytes():
                             if chunk:
+                                # logger.info(f"DEBUG: Node yielding chunk: {len(chunk)} bytes")
                                 yield chunk
+                        logger.info("DEBUG: Node finished streaming")
                 else:
                     response = client.post(
                         f"http://localhost:{self.http_port}/v1/chat/completions", json=request
@@ -254,7 +261,7 @@ class GradientServer:
         self._layer_allocation_changed = False
 
     def build_lattica(self):
-        self.lattica = Lattica.builder().with_listen_addrs(self.host_maddrs)
+        self.lattica = Lattica.builder().with_listen_addrs(self.host_maddrs).with_mdns(False)
 
         if self.scheduler_addr is not None and self.scheduler_addr != "auto":
             if self.scheduler_addr.startswith("/"):
@@ -756,6 +763,13 @@ def launch_p2p_server(
     param_mem_ratio: float = 0.65,
     kvcache_mem_ratio: float = 0.25,
 ):
+    # Check for environment variable override
+    env_host_maddrs = os.environ.get("PARALLAX_HOST_MADDRS")
+    if env_host_maddrs:
+        host_maddrs = [env_host_maddrs]
+    else:
+        host_maddrs = [f"/ip4/0.0.0.0/tcp/{tcp_port}", f"/ip4/0.0.0.0/udp/{udp_port}/quic-v1"]
+
     server = GradientServer(
         recv_from_peer_addr=recv_from_peer_addr,
         send_to_peer_addr=send_to_peer_addr,
@@ -767,7 +781,7 @@ def launch_p2p_server(
         hidden_layers=hidden_layers,
         tp_size=tp_size,
         dht_prefix=dht_prefix,
-        host_maddrs=[f"/ip4/0.0.0.0/tcp/{tcp_port}", f"/ip4/0.0.0.0/udp/{udp_port}/quic-v1"],
+        host_maddrs=host_maddrs,
         announce_maddrs=announce_maddrs,
         http_port=http_port,
         notify_url=notify_url,

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import json
 import time
 import uuid
@@ -139,14 +140,21 @@ if __name__ == "__main__":
 
     check_latest_release()
 
+    # Check for environment variable override
+    env_host_maddrs = os.environ.get("PARALLAX_HOST_MADDRS")
+    if env_host_maddrs:
+        host_maddrs = [env_host_maddrs]
+    else:
+        host_maddrs = [
+            f"/ip4/0.0.0.0/tcp/{args.tcp_port}",
+            f"/ip4/0.0.0.0/udp/{args.udp_port}/quic-v1",
+        ]
+
     scheduler_manage = SchedulerManage(
         initial_peers=args.initial_peers,
         relay_servers=args.relay_servers,
         dht_prefix=args.dht_prefix,
-        host_maddrs=[
-            f"/ip4/0.0.0.0/tcp/{args.tcp_port}",
-            f"/ip4/0.0.0.0/udp/{args.udp_port}/quic-v1",
-        ],
+        host_maddrs=host_maddrs,
         announce_maddrs=args.announce_maddrs,
         http_port=args.port,
         use_hfcache=args.use_hfcache,
