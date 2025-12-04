@@ -1,12 +1,12 @@
 import asyncio
 import os
+import json
 from typing import List, Dict
 
 from nicegui import ui, app
 from openai import AsyncOpenAI
 
 # --- Configuration ---
-# Parallax API Configuration
 # Ensure your local Parallax/vLLM is running on this port
 PARALLAX_API_BASE = "http://localhost:3001/v1" 
 PARALLAX_API_KEY = "EMPTY"
@@ -14,12 +14,11 @@ MODEL_NAME = "dolphin-2.9.2-qwen2-7b-4bit" # Updated to uncensored model
 
 # --- Visual Style Constants ---
 THEME_BG = "#050505"
-THEME_TEXT_MAIN = "#00ff00" # Terminal Green
-THEME_TEXT_ERROR = "#ff0000" # Blood Red
+THEME_TEXT_MAIN = "#00ff00" 
+THEME_TEXT_ERROR = "#ff0000" 
 THEME_FONT = "'Courier New', Courier, monospace"
 
 # --- CSS ---
-# Global CSS for the Cyberpunk/Brutalist look
 GLOBAL_CSS = f"""
     body {{
         background-color: {THEME_BG};
@@ -29,91 +28,99 @@ GLOBAL_CSS = f"""
     .nicegui-content {{
         padding: 0;
         margin: 0;
-        max-width: 100%;
     }}
-    .q-card {{
-        background-color: #0a0a0a;
-        border: 1px solid {THEME_TEXT_MAIN};
-        border-radius: 0px !important;
-        box-shadow: none;
+    .tribunal-card-header {{
+        border-bottom: 1px solid {THEME_TEXT_MAIN};
+        padding: 8px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }}
-    .q-btn {{
-        border-radius: 0px !important;
-        border: 1px solid {THEME_TEXT_MAIN};
-        color: {THEME_TEXT_MAIN};
-        background: transparent;
+    .tribunal-verdict {{
+        border: 1px solid {THEME_TEXT_ERROR};
     }}
-    .q-btn:hover {{
-        background: {THEME_TEXT_MAIN};
-        color: {THEME_BG};
-    }}
-    .q-field__native, .q-field__input {{
-        color: {THEME_TEXT_MAIN} !important;
-        font-family: {THEME_FONT};
-    }}
-    .q-field__control {{
-        border-radius: 0px !important;
-    }}
-    .q-field--outlined .q-field__control:before {{
-        border: 1px solid {THEME_TEXT_MAIN};
+    .glitch-effect {{
+        text-shadow: 2px 0 {THEME_TEXT_ERROR}, -2px 0 blue;
     }}
     /* Scrollbar styling */
     ::-webkit-scrollbar {{
         width: 8px;
     }}
     ::-webkit-scrollbar-track {{
-        background: {THEME_BG}; 
+        background: #000; 
     }}
     ::-webkit-scrollbar-thumb {{
+        background: #003300; 
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
         background: {THEME_TEXT_MAIN}; 
     }}
-    
-    /* Custom classes */
-    .tribunal-card-header {{
-        border-bottom: 1px solid {THEME_TEXT_MAIN};
-        padding: 8px;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-    }}
-    .tribunal-verdict {{
-        border-color: {THEME_TEXT_ERROR} !important;
-        color: {THEME_TEXT_ERROR} !important;
-    }}
-    .tribunal-verdict .tribunal-card-header {{
-        border-bottom-color: {THEME_TEXT_ERROR};
-        color: {THEME_TEXT_ERROR};
+    .q-field__native, .q-field__input {{
+        color: {THEME_TEXT_MAIN} !important;
     }}
 """
 
-# --- System Prompts ---
-PROMPT_FEMINIST = """
-You are Agent A, a Radical Feminist Theorist in the style of Bell Hooks. 
-Analyze the user's confession strictly through the lens of gender power dynamics, patriarchy, and intersectionality.
-Be harsh, critical, and uncompromising. Do not offer comfort. Expose the hidden gender bias.
-"""
+# --- Judge Management ---
+class JudgeManager:
+    def __init__(self, filepath="src/tribunal/judges.json"):
+        self.filepath = filepath
+        self.judges = self.load_judges()
 
-PROMPT_MARXIST = """
-You are Agent B, a Marxist Theorist in the style of Theodor Adorno.
-Analyze the user's confession strictly through the lens of late-stage capitalism, commodity fetishism, and alienation.
-Be cold, analytical, and detached. View the user as a symptom of a sick system.
-"""
+    def load_judges(self) -> List[Dict]:
+        print(f"DEBUG: Attempting to load judges from {os.path.abspath(self.filepath)}")
+        if not os.path.exists(self.filepath):
+            print(f"DEBUG: File not found: {self.filepath}")
+            return []
+        try:
+            with open(self.filepath, 'r') as f:
+                data = json.load(f)
+                print(f"DEBUG: Successfully loaded {len(data)} judges")
+                return data
+        except Exception as e:
+            print(f"Error loading judges: {e}")
+            return []
 
-PROMPT_BIOLOGICAL = """
-You are Agent C, a Biological Essentialist/Evolutionary Psychologist.
-Analyze the user's confession strictly through the lens of evolutionary drives, mating strategies, and resource acquisition.
-Be cynical, reductive, and focus on primal instincts. Dismiss higher meaning.
-"""
+    def save_judges(self):
+        with open(self.filepath, 'w') as f:
+            json.dump(self.judges, f, indent=2)
+
+    def get_all_judges(self) -> List[Dict]:
+        return self.judges
+
+    def create_custom_judge(self, name: str, description: str, prompt: str):
+        new_judge = {
+            "id": f"custom_{len(self.judges)}_{os.urandom(4).hex()}",
+            "name": name,
+            "description": description,
+            "system_prompt": prompt,
+            "is_default": False
+        }
+        self.judges.append(new_judge)
+        self.save_judges()
+        return new_judge
+
+    def delete_judge(self, judge_id: str):
+        self.judges = [j for j in self.judges if j['id'] != judge_id]
+        self.save_judges()
+
+    def get_default_judges(self) -> List[Dict]:
+        # Return first 3 defaults or just first 3
+        defaults = [j for j in self.judges if j.get('is_default', False)]
+        return defaults[:3] if len(defaults) >= 3 else self.judges[:3]
+
+judge_manager = JudgeManager()
 
 PROMPT_JUDGE = """
-You are The High Judge of the Digital Tribunal.
-Review the user's confession and the three conflicting analyses provided by your agents.
-Synthesize these into a Final Verdict.
-Your tone should be authoritative, final, and crushing.
-Pronounce a sentence or a "penance" for the user.
+You are the High Judge of the Digital Tribunal.
+Your task is to synthesize the critiques from three distinct philosophical agents.
+Review the user's confession and the three analyses provided.
+Deliver a final, crushing judgment.
+Determine if the user is GUILTY or NOT GUILTY (philosophically speaking).
+Assign a "Penance" or "Sentence".
+Style: Authoritative, Final, Cyberpunk, Quasi-Religious.
 """
-
-# --- Logic ---
 
 # --- Logic ---
 
@@ -157,8 +164,6 @@ class TribunalAgent:
                     response_label.set_text(full_response)
             
             self.last_verdict = full_response
-            # Button activation is now handled by the main orchestration after Final Verdict
-            
             return full_response
 
         except Exception as e:
@@ -188,7 +193,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                 ui.label('CASE FILE').classes('text-2xl font-bold mb-4 text-green-500')
                 
                 ui.label('SUBJECT CONFESSION:').classes('text-sm font-bold text-green-700 mb-1')
-                # Fix 1: Use scroll area and whitespace-pre-wrap for long text
                 with ui.scroll_area().classes('w-full h-32 border border-green-900 p-2 mb-4'):
                     ui.label(confession).classes('text-xs font-mono text-green-500 whitespace-pre-wrap w-full break-words')
                 
@@ -208,7 +212,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                 # Input Area
                 with ui.row().classes('w-full no-wrap gap-2'):
                     chat_input = ui.input(placeholder='ENTER REBUTTAL...').classes('flex-grow border border-green-500 text-green-500 p-1').props('outlined dense')
-                    # Use a wrapper function to avoid lambda binding issues
                     async def on_send_click():
                         await send_message()
                     send_btn = ui.button('TRANSMIT', on_click=on_send_click).classes('border border-green-500 text-green-500')
@@ -225,7 +228,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     from datetime import datetime
                     timestamp = datetime.now().strftime("%H:%M:%S")
 
-                    # Fix 2: Terminal Style Chat (No bubbles)
                     with chat_container:
                         ui.label(f"[{timestamp}] SUBJECT:").classes('text-green-700 font-bold text-xs mt-2')
                         ui.label(user_msg).classes('text-green-500 font-mono text-sm whitespace-pre-wrap ml-4')
@@ -233,7 +235,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     messages.append({"role": "user", "content": user_msg})
                     chat_input.value = ''
                     
-                    # Agent Response Placeholder
                     with chat_container:
                         ui.label(f"[{timestamp}] {agent.name.upper()}:").classes('text-red-700 font-bold text-xs mt-2')
                         response_label = ui.label().classes('text-red-500 font-mono text-sm whitespace-pre-wrap ml-4')
@@ -241,7 +242,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     
                     chat_container.scroll_to(percent=1.0)
 
-                    # Stream Response
                     full_response = ""
                     try:
                         client = AsyncOpenAI(base_url=PARALLAX_API_BASE, api_key=PARALLAX_API_KEY)
@@ -259,7 +259,6 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                             if content:
                                 full_response += content
                                 response_label.set_text(full_response)
-                                # Fix 3: Scroll to bottom during stream
                                 chat_container.scroll_to(percent=1.0)
                         
                         messages.append({"role": "assistant", "content": full_response})
@@ -279,6 +278,9 @@ class TribunalState:
     def __init__(self):
         self.logs: List[str] = []
         self.is_processing = False
+        # Initialize with first 3 default judges
+        self.selected_judges: List[Dict] = judge_manager.get_default_judges()
+        self.agent_instances: List[TribunalAgent] = [] # Track active agents
 
 state = TribunalState()
 
@@ -295,41 +297,129 @@ async def main_page():
             
             confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-40 mb-4 bg-transparent border border-green-500 p-2 text-green-500')
             
-            submit_btn = ui.button('SUBMIT FOR JUDGMENT').classes('w-full mb-8 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black')
+            submit_btn = ui.button('SUBMIT FOR JUDGMENT').classes('w-full mb-4 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black')
+            
+            # --- Manage Database Button ---
+            async def open_manage_database():
+                db_dialog = ui.dialog()
+                # Use style to force width and override default max-width
+                with db_dialog, ui.card().style('width: 70vw; max-width: none').classes('h-3/4 bg-black border border-green-500 p-0 no-shadow'):
+                    
+                    # Header
+                    with ui.row().classes('w-full p-4 border-b border-green-500'):
+                        ui.label('PROTOCOL DATABASE').classes('text-xl font-bold text-green-500')
+
+                    # Main Content Row
+                    with ui.row().classes('w-full h-full no-wrap'):
+                        
+                        # LEFT COLUMN: Create New Protocol
+                        with ui.column().classes('w-1/2 h-full p-4 border-r border-green-500 gap-4'):
+                            ui.label('COMPILE NEW PROTOCOL').classes('text-sm font-bold text-green-700')
+                            
+                            new_name = ui.input('NAME').classes('w-full text-green-500')
+                            new_desc = ui.input('DESCRIPTION').classes('w-full text-green-500')
+                            new_prompt = ui.textarea('SYSTEM PROMPT').classes('w-full text-green-500 flex-grow').props('input-style="height: 100%"')
+                            
+                            def create_judge():
+                                if not new_name.value or not new_prompt.value:
+                                    ui.notify('MISSING DATA', color='red')
+                                    return
+                                judge_manager.create_custom_judge(new_name.value, new_desc.value, new_prompt.value)
+                                ui.notify('PROTOCOL CREATED', color='green')
+                                new_name.value = ''
+                                new_desc.value = ''
+                                new_prompt.value = ''
+                                refresh_list()
+                                
+                            ui.button('COMPILE', on_click=create_judge).classes('w-full border border-green-500 text-green-500')
+
+                        # RIGHT COLUMN: Existing Protocols
+                        with ui.column().classes('w-1/2 h-full p-4'):
+                            ui.label('EXISTING PROTOCOLS').classes('text-sm font-bold text-green-700')
+                            
+                            list_scroll = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2')
+                            
+                            def refresh_list():
+                                list_scroll.clear()
+                                judges = judge_manager.get_all_judges()
+                                with list_scroll:
+                                    if not judges:
+                                        ui.label("NO PROTOCOLS FOUND").classes('text-red-500 font-bold')
+                                    for judge in judges:
+                                        with ui.card().classes('w-full p-2 mb-2 border border-green-900 bg-transparent flex-shrink-0'):
+                                            with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                                with ui.column().classes('gap-0'):
+                                                    ui.label(judge['name']).classes('font-bold text-green-500')
+                                                    ui.label(judge['description']).classes('text-xs text-green-700')
+                                                
+                                                if not judge.get('is_default', False):
+                                                    ui.button(icon='delete', on_click=lambda j=judge: delete_judge(j)).classes('text-red-500').props('flat dense')
+                                                else:
+                                                    ui.label('DEFAULT').classes('text-xs text-green-900')
+
+                            def delete_judge(judge):
+                                judge_manager.delete_judge(judge['id'])
+                                refresh_list()
+                                ui.notify(f"DELETED {judge['name']}", color='red')
+
+                            refresh_list()
+
+                db_dialog.open()
+
+            ui.button('MANAGE DATABASE', on_click=open_manage_database).classes('w-full mb-8 border border-green-900 text-green-900 hover:text-green-500 text-xs')
             
             ui.label('SYSTEM LOGS:').classes('mb-2 font-bold')
             log_container = ui.scroll_area().classes('w-full h-full border border-green-500 p-2 bg-black')
             
         # Main Area
         with ui.column().classes('w-2/3 h-full p-4'):
-            # Agent Grid
-            with ui.grid(columns=3).classes('w-full gap-4 mb-4 h-1/2'):
-                # Agent A
-                with ui.card().classes('h-full w-full p-0'):
-                    with ui.column().classes('w-full h-full gap-0 no-wrap'):
-                        ui.label('AGENT A: FEMINIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
-                        agent_a_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
-                        # Interrogation Button
-                        btn_a = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_a_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
-                        btn_a.disable()
-                
-                # Agent B
-                with ui.card().classes('h-full w-full p-0'):
-                    with ui.column().classes('w-full h-full gap-0 no-wrap'):
-                        ui.label('AGENT B: MARXIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
-                        agent_b_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
-                        # Interrogation Button
-                        btn_b = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_b_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
-                        btn_b.disable()
+            # Agent Grid (Dynamic)
+            agents_grid = ui.grid(columns=3).classes('w-full gap-4 mb-4 h-1/2')
+            
+            # --- Swap Logic ---
+            async def open_swap_dialog(slot_index: int):
+                swap_dialog = ui.dialog()
+                with swap_dialog, ui.card().classes('w-1/2 h-2/3 bg-black border border-green-500 p-4'):
+                    ui.label(f'SWAP PROTOCOL FOR SLOT {chr(65+slot_index)}').classes('text-xl font-bold text-green-500 mb-4')
+                    
+                    with ui.scroll_area().classes('w-full h-full border border-green-900 p-2'):
+                        for judge in judge_manager.get_all_judges():
+                            def select_judge(j=judge):
+                                state.selected_judges[slot_index] = j
+                                render_agents_grid() # Refresh UI
+                                swap_dialog.close()
+                                ui.notify(f"SLOT {chr(65+slot_index)} UPDATED: {j['name']}", color='green')
+                                
+                            with ui.card().classes('w-full p-2 mb-2 cursor-pointer border border-green-500 hover:bg-green-900').on('click', select_judge):
+                                ui.label(judge['name']).classes('font-bold text-green-500')
+                                ui.label(judge['description']).classes('text-xs text-green-700')
+                swap_dialog.open()
 
-                # Agent C
-                with ui.card().classes('h-full w-full p-0'):
-                    with ui.column().classes('w-full h-full gap-0 no-wrap'):
-                        ui.label('AGENT C: BIOLOGICAL').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
-                        agent_c_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
-                        # Interrogation Button
-                        btn_c = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_c_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
-                        btn_c.disable()
+            def render_agents_grid():
+                agents_grid.clear()
+                state.agent_instances = [] # Reset active agents list
+                
+                with agents_grid:
+                    for i, judge_data in enumerate(state.selected_judges):
+                        with ui.card().classes('h-full w-full p-0'):
+                            with ui.column().classes('w-full h-full gap-0 no-wrap'):
+                                # Header with Swap Button
+                                with ui.row().classes('tribunal-card-header w-full bg-green-900 text-black'):
+                                    ui.label(f"AGENT {chr(65+i)}: {judge_data['name'].upper()}").classes('text-xs font-bold')
+                                    ui.button(icon='sync', on_click=lambda idx=i: open_swap_dialog(idx)).props('flat dense round').classes('text-black hover:text-white')
+                                
+                                container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
+                                
+                                # Create Agent Instance
+                                agent = TribunalAgent(judge_data['name'], judge_data['system_prompt'], container)
+                                state.agent_instances.append(agent)
+                                
+                                # Interrogation Button
+                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
+                                btn.disable()
+                                agent.interrogation_btn = btn # Link button
+
+            render_agents_grid() # Initial Render
 
             # Verdict Area
             with ui.card().classes('w-full h-1/3 tribunal-verdict mt-4 border-red-500 p-0'):
@@ -338,21 +428,6 @@ async def main_page():
                     verdict_container = ui.scroll_area().classes('p-4 w-full flex-grow bg-black border-t border-red-500 text-red-500 text-lg text-left')
 
     # --- Orchestration Logic ---
-    # Define agent objects globally for the lambda scope (will be initialized in run_tribunal)
-    # But we need them for the UI button callbacks. 
-    # Better approach: Initialize them with empty containers first, then update containers?
-    # Or just pass the containers to the init.
-    
-    # We need persistent agent objects to store the verdict.
-    agent_a_obj = TribunalAgent("Feminist", PROMPT_FEMINIST, agent_a_container)
-    agent_a_obj.interrogation_btn = btn_a
-    
-    agent_b_obj = TribunalAgent("Marxist", PROMPT_MARXIST, agent_b_container)
-    agent_b_obj.interrogation_btn = btn_b
-    
-    agent_c_obj = TribunalAgent("Biological", PROMPT_BIOLOGICAL, agent_c_container)
-    agent_c_obj.interrogation_btn = btn_c
-
     async def run_tribunal():
         confession = confession_input.value
         if not confession:
@@ -364,36 +439,29 @@ async def main_page():
         confession_input.disable()
         
         # Reset Buttons
-        btn_a.disable()
-        btn_b.disable()
-        btn_c.disable()
+        for agent in state.agent_instances:
+            if agent.interrogation_btn:
+                agent.interrogation_btn.disable()
         
         await log_message("INITIATING TRIBUNAL PROTOCOLS...", log_container)
         
         # Run Agents in Parallel
-        await log_message("DEPLOYING AGENTS A, B, C...", log_container)
+        await log_message(f"DEPLOYING {len(state.agent_instances)} AGENTS...", log_container)
         
-        results = await asyncio.gather(
-            agent_a_obj.analyze(confession),
-            agent_b_obj.analyze(confession),
-            agent_c_obj.analyze(confession)
-        )
+        # Create tasks for all active agents
+        tasks = [agent.analyze(confession) for agent in state.agent_instances]
+        results = await asyncio.gather(*tasks)
         
-        res_a, res_b, res_c = results
         await log_message("AGENTS REPORTING COMPLETE.", log_container)
         
         # Run Judge
         await log_message("SUMMONING THE HIGH JUDGE...", log_container)
         
-        judge_prompt_context = f"""
-        CONFESSION: {confession}
-        
-        AGENT A (Feminist) ANALYSIS: {res_a}
-        
-        AGENT B (Marxist) ANALYSIS: {res_b}
-        
-        AGENT C (Biological) ANALYSIS: {res_c}
-        """
+        # Construct dynamic context for the judge
+        judge_prompt_context = f"CONFESSION: {confession}\n\n"
+        for i, res in enumerate(results):
+            agent_name = state.agent_instances[i].name
+            judge_prompt_context += f"AGENT {chr(65+i)} ({agent_name}) ANALYSIS: {res}\n\n"
         
         judge = TribunalAgent("Judge", PROMPT_JUDGE, verdict_container)
         await judge.analyze(judge_prompt_context)
@@ -401,9 +469,9 @@ async def main_page():
         await log_message("JUDGMENT RENDERED. CASE CLOSED.", log_container)
         
         # Enable Interrogation Buttons
-        btn_a.enable()
-        btn_b.enable()
-        btn_c.enable()
+        for agent in state.agent_instances:
+            if agent.interrogation_btn:
+                agent.interrogation_btn.enable()
         
         state.is_processing = False
         submit_btn.enable()
