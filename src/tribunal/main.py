@@ -69,6 +69,8 @@ GLOBAL_CSS = f"""
     }}
 """
 
+from rag_manager import rag_manager
+
 # --- Judge Management ---
 class JudgeManager:
     def __init__(self, filepath="src/tribunal/judges.json"):
@@ -96,19 +98,25 @@ class JudgeManager:
     def get_all_judges(self) -> List[Dict]:
         return self.judges
 
-    def create_custom_judge(self, name: str, description: str, prompt: str):
+    def create_custom_judge(self, name: str, description: str, prompt: str, rag_collection: str = None):
         new_judge = {
             "id": f"custom_{len(self.judges)}_{os.urandom(4).hex()}",
             "name": name,
             "description": description,
             "system_prompt": prompt,
-            "is_default": False
+            "is_default": False,
+            "rag_collection": rag_collection
         }
         self.judges.append(new_judge)
         self.save_judges()
         return new_judge
 
     def delete_judge(self, judge_id: str):
+        # Clean up RAG collection if it exists
+        judge = next((j for j in self.judges if j['id'] == judge_id), None)
+        if judge and judge.get('rag_collection'):
+            rag_manager.delete_knowledge(judge['id'])
+            
         self.judges = [j for j in self.judges if j['id'] != judge_id]
         self.save_judges()
 
@@ -132,10 +140,11 @@ Style: Authoritative, Final, Cyberpunk, Quasi-Religious.
 # --- Logic ---
 
 class TribunalAgent:
-    def __init__(self, name: str, system_prompt: str, ui_container: ui.scroll_area):
+    def __init__(self, name: str, system_prompt: str, ui_container: ui.scroll_area, rag_collection: str = None):
         self.name = name
         self.system_prompt = system_prompt
         self.ui_container = ui_container
+        self.rag_collection = rag_collection
         self.client = AsyncOpenAI(base_url=PARALLAX_API_BASE, api_key=PARALLAX_API_KEY)
         self.last_verdict = "" # Store the last verdict for context
         self.interrogation_btn = None # Reference to the button
@@ -154,10 +163,32 @@ class TribunalAgent:
             with self.ui_container:
                 response_label = ui.label().classes('whitespace-pre-wrap font-mono text-sm w-full text-left')
             
+            # RAG Injection
+            final_system_prompt = self.system_prompt
+            if self.rag_collection:
+                try:
+                    # We need the judge ID to query the collection. 
+                    # Since rag_collection stores "judge_{id}", we can pass the ID part or just use the collection name if RAGManager supports it.
+                    # RAGManager.query_knowledge expects judge_id.
+                    # Let's extract the ID from "judge_{id}"
+                    judge_id = self.rag_collection.replace("judge_", "")
+                    
+                    knowledge_chunks = rag_manager.query_knowledge(judge_id, confession)
+                    if knowledge_chunks:
+                        knowledge_text = "\n\n".join(knowledge_chunks)
+                        final_system_prompt += f"\n\n[RELEVANT KNOWLEDGE FROM ARCHIVES]:\n{knowledge_text}\n[END ARCHIVES]"
+                        
+                        # Visual feedback for RAG usage
+                        with self.ui_container:
+                            ui.label("ACCESSING NEURAL ARCHIVES...").classes('text-xs text-green-700 animate-pulse mb-2')
+                            
+                except Exception as e:
+                    print(f"RAG Error: {e}")
+
             response = await self.client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
+                    {"role": "system", "content": final_system_prompt},
                     {"role": "user", "content": confession}
                 ],
                 stream=True,
@@ -335,15 +366,45 @@ async def main_page():
                             new_desc = ui.input('DESCRIPTION').classes('w-full text-green-500')
                             new_prompt = ui.textarea('SYSTEM PROMPT').classes('w-full text-green-500 flex-grow').props('input-style="height: 100%"')
                             
-                            def create_judge():
+                            # RAG Upload
+                            uploaded_file = {'content': None, 'name': None}
+                            def handle_upload(e):
+                                uploaded_file['content'] = e.content.read()
+                                uploaded_file['name'] = e.name
+                                ui.notify(f"FILE BUFFERED: {e.name}", color='green')
+
+                            ui.upload(label="INJECT KNOWLEDGE (TXT/PDF)", on_upload=handle_upload, auto_upload=True).classes('w-full border border-green-500 text-green-500').props('accept=".txt,.pdf" color="green" flat bordered')
+                            
+                            async def create_judge():
                                 if not new_name.value or not new_prompt.value:
                                     ui.notify('MISSING DATA', color='red')
                                     return
-                                judge_manager.create_custom_judge(new_name.value, new_desc.value, new_prompt.value)
+                                
+                                rag_col = None
+                                if uploaded_file['content']:
+                                    notification = ui.notify('PROCESSING NEURAL STACK...', type='ongoing', color='green')
+                                    try:
+                                        # Generate a temp ID for RAG processing before creating the judge
+                                        temp_id = f"custom_{len(judge_manager.judges)}_{os.urandom(4).hex()}"
+                                        rag_col = await asyncio.to_thread(
+                                            rag_manager.process_document, 
+                                            uploaded_file['content'], 
+                                            uploaded_file['name'], 
+                                            temp_id
+                                        )
+                                        notification.dismiss()
+                                        ui.notify('KNOWLEDGE INGESTED', color='green')
+                                    except Exception as e:
+                                        notification.dismiss()
+                                        ui.notify(f'RAG ERROR: {e}', color='red')
+                                        return
+
+                                judge_manager.create_custom_judge(new_name.value, new_desc.value, new_prompt.value, rag_collection=rag_col)
                                 ui.notify('PROTOCOL CREATED', color='green')
                                 new_name.value = ''
                                 new_desc.value = ''
                                 new_prompt.value = ''
+                                uploaded_file['content'] = None
                                 refresh_list()
                                 
                             ui.button('COMPILE', on_click=create_judge).classes('w-full border border-green-500 text-green-500')
@@ -424,7 +485,7 @@ async def main_page():
                                 container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
                                 
                                 # Create Agent Instance
-                                agent = TribunalAgent(judge_data['name'], judge_data['system_prompt'], container)
+                                agent = TribunalAgent(judge_data['name'], judge_data['system_prompt'], container, judge_data.get('rag_collection'))
                                 agent_instances.append(agent)
                                 
                                 # Interrogation Button - Default Disabled Style
