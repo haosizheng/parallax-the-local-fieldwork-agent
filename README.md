@@ -1,88 +1,80 @@
-# Local Fieldwork Agent (基于 Parallax & Qwen2.5)
+# The Digital Tribunal
 
-**Local Fieldwork Agent** 是一个专为社会学田野调查和定性研究设计的本地化 AI 助手。它结合了 **RAG (检索增强生成)** 和 **隐私匿名化检查** 功能，帮助研究者在确保数据绝对安全（完全本地运行）的前提下，高效地分析访谈资料。
+A Cyberpunk-themed AI Judgment System powered by Parallax. This tool allows users to confess their "sins" and receive philosophical verdicts from multiple AI agents, culminating in a final judgment from the High Judge. It features a RAG (Retrieval-Augmented Generation) system for injecting custom knowledge into the judges.
 
-## ✨ 核心功能 (Features)
+## Prerequisites
 
-### 1. 💬 RAG Chat (访谈对话助手)
-- **基于资料回答**: 上传访谈稿（PDF/TXT），AI 会严格基于文档内容回答你的问题。
-- **来源溯源**: 每一个回答都会附带原文出处（Source Context），方便核对。
-- **参数可调**: 支持动态调整 Chunk Size（切分大小）、Temperature（创造力）和 Top-K（检索数量）。
+- Python 3.10+
+- Parallax Framework
+- Dependencies: `nicegui`, `openai`, `chromadb`, `sentence_transformers`, `pypdf`
 
-### 2. 🛡️ Anonymization Checker (匿名化检查器)
-- **隐私风险识别**: 自动识别文本中的 **PII (个人身份信息)**（如姓名、日期、地点）。
-- **高危组合预警**: 识别可能导致身份暴露的**高危信息组合**（如“稀有职业 + 唯一地点”）。
-- **智能高亮**: 使用红/橙/黄三色高亮显示不同等级的风险，并提供风险原因说明。
-- **自定义规则**: 内置社会学伦理专家 Prompt，并支持用户自定义 System Prompt 和排除规则。
-- **PDF 智能清洗**: 自动修复 PDF 复制时的断行问题。
+## Quick Start
 
-### 3. 🔒 完全本地化 (Local & Secure)
-- **数据不出域**: 所有文件处理、向量存储（ChromaDB）和模型推理（Qwen2.5-7B）均在本地 Mac 上完成。
-- **无需联网**: 模型下载完成后，运行时无需互联网连接。
+You need to run three separate terminal processes to start the full system.
 
----
-
-## 🛠️ 系统架构 (Architecture)
-
-本系统基于 **Parallax** 分布式推理框架运行，包含三个组件：
-
-1.  **Scheduler (调度器)**: 负责接收请求并分发任务。
-2.  **Node (计算节点)**: 加载 Qwen2.5-7B-Instruct (4bit) 模型进行推理。
-3.  **Streamlit App (用户界面)**: 提供交互式 Web 界面。
-
----
-
-## 🚀 快速开始 (Quick Start)
-
-### 1. 环境准备
-- **硬件**: Mac M1/M2/M3 Pro/Max (推荐 32GB+ 内存)。
-- **Python**: 3.10+
-
-### 2. 启动步骤
-你需要打开 **3 个终端窗口**，按顺序运行以下命令：
-
-#### Terminal 1: 启动调度器
+### 1. Start the Scheduler (Terminal 1)
+This manages the P2P network and the API endpoint.
 ```bash
-./start_qwen25_7b.sh
+./start_dolphin.sh
 ```
-*等待直到看到 `Serving at localhost:3001`。*
+*   **Port:** 8888 (P2P), 3001 (OpenAI API)
 
-#### Terminal 2: 启动计算节点
+### 2. Start the Compute Node (Terminal 2)
+This runs the actual LLM (Qwen2-7B) and connects to the Scheduler.
 ```bash
 ./start_node.sh
 ```
-*等待直到看到 `Ready` 或连接成功日志。*
+*   **Port:** 3000 (Internal Model Server)
 
-#### Terminal 3: 启动用户界面
+### 3. Start the Tribunal UI (Terminal 3)
+This launches the web interface.
 ```bash
-streamlit run src/fieldwork_agent/app.py
+source venv/bin/activate
+python3 src/tribunal/main.py
 ```
-*浏览器会自动打开 `http://localhost:8501`。*
+*   **Port:** 8081 (Web UI)
+*   **Access:** Open [http://localhost:8081](http://localhost:8081) in your browser.
 
----
+## Port Management & Troubleshooting
 
-## 📖 使用指南
+If you encounter "Address already in use" errors, use the following commands to identify and kill the stuck processes.
 
-### 切换模式
-在左侧边栏的 **Navigation** 中切换功能：
+### Ports Used
+- **8081**: Tribunal Web UI (Python/NiceGUI)
+- **3001**: Parallax Scheduler API (Python)
+- **3000**: Parallax Node Internal Server (Python)
+- **8888**: Parallax P2P Communication (Python)
 
-#### 💬 RAG Chat 模式
-1.  **上传**: 在左侧上传访谈稿。
-2.  **索引**: 点击 "Index Document"。
-3.  **提问**: 在主界面输入问题。
-4.  **调整**: 随时在左侧调整 Temperature 或 Top-K 来优化回答。
+### How to Clean Up Ports
 
-#### 🛡️ Anonymization Checker 模式
-1.  **输入**: 上传文件或直接粘贴文本。
-2.  **配置**: 在左侧 "Prompt Configuration" 中可以查看或修改检查规则。
-3.  **分析**: 点击 "Analyze Risks"。
-4.  **查看**: 
-    -   **表格**: 查看结构化的风险列表。
-    -   **句子**: 快速浏览包含风险的句子。
-    -   **原文**: 展开查看带有高亮标记的全文（悬停可看原因）。
+**Option 1: The "Nuke" Method (Recommended for Dev)**
+Kills all Python processes. Use with caution if you have other Python scripts running.
+```bash
+pkill -9 python3
+```
 
----
+**Option 2: Surgical Removal (By Port)**
+Check who is using a specific port (e.g., 3001):
+```bash
+lsof -i :3001
+```
+Kill the process by PID:
+```bash
+kill -9 <PID>
+```
 
-## ⚠️ 常见问题
-- **内存不足 (OOM)**: 如果遇到 `Insufficient Memory` 错误，请尝试减小 **Top-K Retrieval** 的值（建议 5-10）。
-- **数据库错误**: 如果遇到 `Could not connect to tenant`，系统会自动重置数据库，你只需重新 Index 文档即可。
+**One-liner to kill process on a specific port (e.g., 8081):**
+```bash
+lsof -t -i:8081 | xargs kill -9
+```
+
+### Common Issues
+- **"No route to host" / VPN Issues**: The system is configured to bind to `localhost` to avoid VPN interference. Do not remove `PARALLAX_HOST_MADDRS` from the start scripts.
+- **"Connection Refused"**: Ensure the Scheduler (`start_dolphin.sh`) is fully running before starting the Node or the UI.
+- **UI Hangs on "DEPLOYING..."**: This usually means the Node hasn't successfully joined the Scheduler. Check the Node terminal for "Registered ... Block" messages.
+
+## Features
+- **Multi-Agent Analysis**: Three distinct AI personas analyze your confession.
+- **Custom RAG**: Upload TXT/PDF files in the "Protocol Database" to give judges specific knowledge.
+- **Interrogation Room**: Chat one-on-one with any agent after the verdict.
+- **Cyberpunk UI**: Fully themed interface with terminal-style interactions.

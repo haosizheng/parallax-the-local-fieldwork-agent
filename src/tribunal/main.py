@@ -12,6 +12,10 @@ PARALLAX_API_BASE = "http://localhost:3001/v1"
 PARALLAX_API_KEY = "EMPTY"
 MODEL_NAME = "dolphin-2.9.2-qwen2-7b-4bit" # Updated to uncensored model
 
+# --- LLM Configuration ---
+AGENT_TEMPERATURE = 1.0
+AGENT_PRESENCE_PENALTY = 0.4
+
 # --- Visual Style Constants ---
 THEME_BG = "#050505"
 THEME_TEXT_MAIN = "#00ff00" 
@@ -192,7 +196,8 @@ class TribunalAgent:
                     {"role": "user", "content": confession}
                 ],
                 stream=True,
-                temperature=0.7,
+                temperature=AGENT_TEMPERATURE,
+                presence_penalty=AGENT_PRESENCE_PENALTY,
             )
 
             async for chunk in response:
@@ -238,7 +243,7 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                 with ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2'):
                     ui.label(agent.last_verdict).classes('text-xs font-mono text-green-500 whitespace-pre-wrap w-full break-words')
                 
-                ui.button('TERMINATE SESSION', on_click=dialog.close).classes('w-full mt-4 border border-red-500 text-red-500 hover:bg-red-900')
+                ui.button('TERMINATE SESSION', on_click=dialog.close).classes('w-full mt-4 border border-red-500 text-white hover:bg-red-900').props('outlined dense')
 
             # Right Column: Chat Stream
             with ui.column().classes('w-2/3 h-full p-4 flex flex-col'):
@@ -252,7 +257,7 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     chat_input = ui.input(placeholder='ENTER REBUTTAL...').classes('flex-grow border border-green-500 text-green-500 p-1').props('outlined dense')
                     async def on_send_click():
                         await send_message()
-                    send_btn = ui.button('TRANSMIT', on_click=on_send_click).classes('border border-green-500 text-green-500')
+                    send_btn = ui.button('TRANSMIT', on_click=on_send_click).classes('border border-green-500 text-green-500 hover:bg-green-900').props('outlined dense')
 
                 # Chat Logic
                 messages = [
@@ -287,7 +292,8 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                             model=MODEL_NAME,
                             messages=messages,
                             stream=True,
-                            temperature=0.7
+                            temperature=AGENT_TEMPERATURE,
+                            presence_penalty=AGENT_PRESENCE_PENALTY,
                         )
                         
                         spinner.delete()
@@ -339,7 +345,8 @@ async def main_page():
             confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full flex-grow mb-4 bg-transparent border border-green-500 p-2 text-green-500').props('spellcheck="false" borderless input-style="height: 100%"')
             
             # Submit Button - Terminal Style
-            submit_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=lambda: run_tribunal()).classes('w-full mb-4 bg-transparent border border-green-500 text-green-500 font-bold hover:bg-green-500 hover:text-black rounded-none')
+            # Default: Transparent with Green Border. Hover: Red Fill.
+            submit_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=lambda: run_tribunal()).classes('w-full mb-4 bg-transparent border border-green-500 text-green-500 font-bold hover:bg-red-900 hover:text-white hover:border-red-500 rounded-none')
             
             # Log Area - Compact
             ui.label('SYSTEM LOGS:').classes('mb-1 font-bold text-green-700 text-xs')
@@ -407,7 +414,8 @@ async def main_page():
                                 uploaded_file['content'] = None
                                 refresh_list()
                                 
-                            ui.button('COMPILE', on_click=create_judge).classes('w-full border border-green-500 text-green-500')
+                            # Compile Button: Default Green Fill. Hover: Red Fill.
+                            ui.button('COMPILE', on_click=create_judge).classes('w-full border border-green-500 text-white font-bold hover:bg-red-900 hover:text-white hover:border-red-500').props('color=none')
 
                         # RIGHT COLUMN: Existing Protocols
                         with ui.column().classes('w-1/2 h-full p-4'):
@@ -443,7 +451,8 @@ async def main_page():
                 db_dialog.open()
 
             # Protocol DB Button - Bottom
-            ui.button('PROTOCOL DATABASE', on_click=open_manage_database).classes('w-full mt-auto border border-gray-700 text-gray-500 hover:border-green-500 hover:text-green-500 rounded-none')
+            # Default: Green Fill. Hover: Red Fill.
+            ui.button('PROTOCOL DATABASE', on_click=open_manage_database).classes('w-full mt-auto border border-green-500 font-bold text-white hover:bg-red-900 hover:text-white hover:border-red-500 rounded-none').props('color=none')
             
         # Main Area
         with ui.column().classes('w-2/3 h-full p-4'):
@@ -489,7 +498,8 @@ async def main_page():
                                 agent_instances.append(agent)
                                 
                                 # Interrogation Button - Default Disabled Style
-                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full rounded-none border-t border-gray-800 bg-gray-900 text-gray-700 cursor-not-allowed')
+                                # Active: Green Fill. Hover: Red Fill.
+                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full font-bold rounded-none border-t border-green-900 text-gray-700 bg-gray-400 hover:bg-red-900 cursor-not-allowed').props('color=none')
                                 btn.disable()
                                 agent.interrogation_btn = btn # Link button
 
@@ -548,7 +558,7 @@ async def main_page():
             if agent.interrogation_btn:
                 agent.interrogation_btn.enable()
                 # Update classes for active state
-                agent.interrogation_btn.classes(remove='border-gray-800 bg-gray-900 text-gray-700', add='border-red-500 text-red-500 hover:bg-red-900')
+                agent.interrogation_btn.classes(remove='border-gray-800 bg-gray-900 text-gray-700', add='border-green-500 bg-green-900 text-black hover:bg-red-900 hover:text-white hover:border-red-500')
         
         state.is_processing = False
         submit_btn.enable()
