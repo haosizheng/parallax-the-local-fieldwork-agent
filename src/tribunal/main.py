@@ -115,12 +115,16 @@ Pronounce a sentence or a "penance" for the user.
 
 # --- Logic ---
 
+# --- Logic ---
+
 class TribunalAgent:
     def __init__(self, name: str, system_prompt: str, ui_container: ui.scroll_area):
         self.name = name
         self.system_prompt = system_prompt
         self.ui_container = ui_container
         self.client = AsyncOpenAI(base_url=PARALLAX_API_BASE, api_key=PARALLAX_API_KEY)
+        self.last_verdict = "" # Store the last verdict for context
+        self.interrogation_btn = None # Reference to the button
 
     async def analyze(self, confession: str) -> str:
         """
@@ -152,6 +156,9 @@ class TribunalAgent:
                     full_response += content
                     response_label.set_text(full_response)
             
+            self.last_verdict = full_response
+            # Button activation is now handled by the main orchestration after Final Verdict
+            
             return full_response
 
         except Exception as e:
@@ -167,6 +174,105 @@ async def log_message(message: str, container: ui.scroll_area):
     with container:
         ui.label(f"[{timestamp}] {message}").classes('text-xs font-mono text-green-500')
     container.scroll_to(percent=1.0)
+
+# --- Interrogation Room Logic ---
+async def open_interrogation_room(agent: TribunalAgent, confession: str):
+    """Opens a full-screen dialog for chatting with the specific agent."""
+    
+    # Dialog Context
+    dialog = ui.dialog()
+    with dialog, ui.card().classes('w-full h-full bg-black border border-green-500 p-0 no-shadow'):
+        with ui.row().classes('w-full h-full no-wrap'):
+            # Left Column: Static Context
+            with ui.column().classes('w-1/3 h-full border-r border-green-500 p-4'):
+                ui.label('CASE FILE').classes('text-2xl font-bold mb-4 text-green-500')
+                
+                ui.label('SUBJECT CONFESSION:').classes('text-sm font-bold text-green-700 mb-1')
+                # Fix 1: Use scroll area and whitespace-pre-wrap for long text
+                with ui.scroll_area().classes('w-full h-32 border border-green-900 p-2 mb-4'):
+                    ui.label(confession).classes('text-xs font-mono text-green-500 whitespace-pre-wrap w-full break-words')
+                
+                ui.label(f'INITIAL CHARGE ({agent.name.upper()}):').classes('text-sm font-bold text-green-700 mb-1')
+                with ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2'):
+                    ui.label(agent.last_verdict).classes('text-xs font-mono text-green-500 whitespace-pre-wrap w-full break-words')
+                
+                ui.button('TERMINATE SESSION', on_click=dialog.close).classes('w-full mt-4 border border-red-500 text-red-500 hover:bg-red-900')
+
+            # Right Column: Chat Stream
+            with ui.column().classes('w-2/3 h-full p-4 flex flex-col'):
+                ui.label(f'INTERROGATION LOG // {agent.name.upper()}').classes('text-xl font-bold mb-4 text-green-500 blink')
+                
+                # Chat Container
+                chat_container = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-4 mb-4 bg-black')
+                
+                # Input Area
+                with ui.row().classes('w-full no-wrap gap-2'):
+                    chat_input = ui.input(placeholder='ENTER REBUTTAL...').classes('flex-grow border border-green-500 text-green-500 p-1').props('outlined dense')
+                    # Use a wrapper function to avoid lambda binding issues
+                    async def on_send_click():
+                        await send_message()
+                    send_btn = ui.button('TRANSMIT', on_click=on_send_click).classes('border border-green-500 text-green-500')
+
+                # Chat Logic
+                messages = [
+                    {"role": "system", "content": f"{agent.system_prompt}\n\nCONTEXT:\nThe user has entered the interrogation room to discuss their confession: '{confession}'.\nYour previous verdict was: '{agent.last_verdict}'.\nContinue the critique and answer their questions directly. Maintain your persona."}
+                ]
+                
+                async def send_message():
+                    user_msg = chat_input.value
+                    if not user_msg: return
+                    
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+
+                    # Fix 2: Terminal Style Chat (No bubbles)
+                    with chat_container:
+                        ui.label(f"[{timestamp}] SUBJECT:").classes('text-green-700 font-bold text-xs mt-2')
+                        ui.label(user_msg).classes('text-green-500 font-mono text-sm whitespace-pre-wrap ml-4')
+                    
+                    messages.append({"role": "user", "content": user_msg})
+                    chat_input.value = ''
+                    
+                    # Agent Response Placeholder
+                    with chat_container:
+                        ui.label(f"[{timestamp}] {agent.name.upper()}:").classes('text-red-700 font-bold text-xs mt-2')
+                        response_label = ui.label().classes('text-red-500 font-mono text-sm whitespace-pre-wrap ml-4')
+                        spinner = ui.spinner(size='sm').classes('text-red-500 ml-4')
+                    
+                    chat_container.scroll_to(percent=1.0)
+
+                    # Stream Response
+                    full_response = ""
+                    try:
+                        client = AsyncOpenAI(base_url=PARALLAX_API_BASE, api_key=PARALLAX_API_KEY)
+                        stream = await client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=messages,
+                            stream=True,
+                            temperature=0.7
+                        )
+                        
+                        spinner.delete()
+                        
+                        async for chunk in stream:
+                            content = chunk.choices[0].delta.content
+                            if content:
+                                full_response += content
+                                response_label.set_text(full_response)
+                                # Fix 3: Scroll to bottom during stream
+                                chat_container.scroll_to(percent=1.0)
+                        
+                        messages.append({"role": "assistant", "content": full_response})
+                        
+                    except Exception as e:
+                        spinner.delete()
+                        with chat_container:
+                            ui.label(f"ERROR: {e}").classes('text-red-500 font-bold')
+
+                chat_input.on('keydown.enter', send_message)
+
+    dialog.open()
+
 
 # --- App State ---
 class TribunalState:
@@ -203,18 +309,24 @@ async def main_page():
                     with ui.column().classes('w-full h-full gap-0 no-wrap'):
                         ui.label('AGENT A: FEMINIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_a_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
+                        # Interrogation Button
+                        btn_a = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_a_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
                 
                 # Agent B
                 with ui.card().classes('h-full w-full p-0'):
                     with ui.column().classes('w-full h-full gap-0 no-wrap'):
                         ui.label('AGENT B: MARXIST').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_b_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
+                        # Interrogation Button
+                        btn_b = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_b_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
 
                 # Agent C
                 with ui.card().classes('h-full w-full p-0'):
                     with ui.column().classes('w-full h-full gap-0 no-wrap'):
                         ui.label('AGENT C: BIOLOGICAL').classes('tribunal-card-header w-full text-center bg-green-900 text-black')
                         agent_c_container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
+                        # Interrogation Button
+                        btn_c = ui.button('ENTER INTERROGATION', on_click=lambda: open_interrogation_room(agent_c_obj, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900').disable()
 
             # Verdict Area
             with ui.card().classes('w-full h-1/3 tribunal-verdict mt-4 border-red-500 p-0'):
@@ -223,6 +335,21 @@ async def main_page():
                     verdict_container = ui.scroll_area().classes('p-4 w-full flex-grow bg-black border-t border-red-500 text-red-500 text-lg text-left')
 
     # --- Orchestration Logic ---
+    # Define agent objects globally for the lambda scope (will be initialized in run_tribunal)
+    # But we need them for the UI button callbacks. 
+    # Better approach: Initialize them with empty containers first, then update containers?
+    # Or just pass the containers to the init.
+    
+    # We need persistent agent objects to store the verdict.
+    agent_a_obj = TribunalAgent("Feminist", PROMPT_FEMINIST, agent_a_container)
+    agent_a_obj.interrogation_btn = btn_a
+    
+    agent_b_obj = TribunalAgent("Marxist", PROMPT_MARXIST, agent_b_container)
+    agent_b_obj.interrogation_btn = btn_b
+    
+    agent_c_obj = TribunalAgent("Biological", PROMPT_BIOLOGICAL, agent_c_container)
+    agent_c_obj.interrogation_btn = btn_c
+
     async def run_tribunal():
         confession = confession_input.value
         if not confession:
@@ -233,20 +360,20 @@ async def main_page():
         submit_btn.disable()
         confession_input.disable()
         
-        await log_message("INITIATING TRIBUNAL PROTOCOLS...", log_container)
+        # Reset Buttons
+        btn_a.disable()
+        btn_b.disable()
+        btn_c.disable()
         
-        # Initialize Agents
-        agent_a = TribunalAgent("Feminist", PROMPT_FEMINIST, agent_a_container)
-        agent_b = TribunalAgent("Marxist", PROMPT_MARXIST, agent_b_container)
-        agent_c = TribunalAgent("Biological", PROMPT_BIOLOGICAL, agent_c_container)
+        await log_message("INITIATING TRIBUNAL PROTOCOLS...", log_container)
         
         # Run Agents in Parallel
         await log_message("DEPLOYING AGENTS A, B, C...", log_container)
         
         results = await asyncio.gather(
-            agent_a.analyze(confession),
-            agent_b.analyze(confession),
-            agent_c.analyze(confession)
+            agent_a_obj.analyze(confession),
+            agent_b_obj.analyze(confession),
+            agent_c_obj.analyze(confession)
         )
         
         res_a, res_b, res_c = results
@@ -269,6 +396,11 @@ async def main_page():
         await judge.analyze(judge_prompt_context)
         
         await log_message("JUDGMENT RENDERED. CASE CLOSED.", log_container)
+        
+        # Enable Interrogation Buttons
+        btn_a.enable()
+        btn_b.enable()
+        btn_c.enable()
         
         state.is_processing = False
         submit_btn.enable()
