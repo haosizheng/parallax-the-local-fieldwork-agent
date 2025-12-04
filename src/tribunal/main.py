@@ -60,6 +60,13 @@ GLOBAL_CSS = f"""
     .q-field__native, .q-field__input {{
         color: {THEME_TEXT_MAIN} !important;
     }}
+    /* Hide resize handle and ensure full width */
+    .q-textarea .q-field__native {{
+        resize: none;
+    }}
+    .q-field--outlined .q-field__control:before {{
+        border: 1px solid {THEME_TEXT_MAIN};
+    }}
 """
 
 # --- Judge Management ---
@@ -292,17 +299,20 @@ async def main_page():
     agent_instances: List[TribunalAgent] = [] 
 
     # Layout
-    with ui.row().classes('w-full h-screen no-wrap'):
+    with ui.row().classes('w-full h-screen no-wrap gap-6'):
         # Sidebar
-        with ui.column().classes('w-1/3 h-full p-4 border-r border-green-500'):
+        with ui.column().classes('w-1/3 h-full p-4 border-r border-green-500 flex flex-col'):
             ui.label('THE TRIBUNAL').classes('text-4xl font-bold mb-8 glitch-effect')
             
-            confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-40 mb-4 bg-transparent border border-green-500 p-2 text-green-500')
+            # Confession Input - Dominant Element
+            confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full flex-grow mb-4 bg-transparent border border-green-500 p-2 text-green-500').props('spellcheck="false" borderless input-style="height: 100%"')
             
-            submit_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=lambda: run_tribunal()).classes('w-full mb-0 bg-green-900 text-black font-bold hover:bg-green-700')
+            # Submit Button - Terminal Style
+            submit_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=lambda: run_tribunal()).classes('w-full mb-4 bg-transparent border border-green-500 text-green-500 font-bold hover:bg-green-500 hover:text-black rounded-none')
             
-            # Log Area
-            # log_container = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2 font-mono text-xs text-green-500')
+            # Log Area - Compact
+            ui.label('SYSTEM LOGS:').classes('mb-1 font-bold text-green-700 text-xs')
+            log_container = ui.scroll_area().classes('w-full h-32 border border-green-900 p-2 font-mono text-xs text-green-500 bg-black mb-4')
             
             # --- Manage Database Button ---
             async def open_manage_database():
@@ -371,10 +381,8 @@ async def main_page():
 
                 db_dialog.open()
 
-            ui.button('PROTOCOL DATABASE', on_click=open_manage_database).classes('w-full mt-4 border border-green-900 text-green-700 hover:bg-green-900 hover:text-black')
-            
-            ui.label('SYSTEM LOGS:').classes('mb-2 font-bold')
-            log_container = ui.scroll_area().classes('w-full h-full border border-green-500 p-2 bg-black')
+            # Protocol DB Button - Bottom
+            ui.button('PROTOCOL DATABASE', on_click=open_manage_database).classes('w-full mt-auto border border-gray-700 text-gray-500 hover:border-green-500 hover:text-green-500 rounded-none')
             
         # Main Area
         with ui.column().classes('w-2/3 h-full p-4'):
@@ -406,12 +414,12 @@ async def main_page():
                 
                 with agents_grid:
                     for i, judge_data in enumerate(state.selected_judges):
-                        with ui.card().classes('h-full w-full p-0'):
+                        with ui.card().classes('h-full w-full p-0 border border-green-900 bg-black'):
                             with ui.column().classes('w-full h-full gap-0 no-wrap'):
                                 # Header with Swap Button
-                                with ui.row().classes('tribunal-card-header w-full bg-green-900 text-black'):
+                                with ui.row().classes('tribunal-card-header w-full bg-green-900 text-black justify-between items-center'):
                                     ui.label(f"AGENT {chr(65+i)}: {judge_data['name'].upper()}").classes('text-xs font-bold')
-                                    ui.button(icon='sync', on_click=lambda idx=i: open_swap_dialog(idx)).props('flat dense round').classes('text-black hover:text-white')
+                                    ui.button(icon='sync', on_click=lambda idx=i: open_swap_dialog(idx)).props('flat dense round').classes('text-black hover:text-white cursor-pointer')
                                 
                                 container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
                                 
@@ -419,17 +427,17 @@ async def main_page():
                                 agent = TribunalAgent(judge_data['name'], judge_data['system_prompt'], container)
                                 agent_instances.append(agent)
                                 
-                                # Interrogation Button
-                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full rounded-none border-t border-green-500 text-green-500 hover:bg-green-900')
+                                # Interrogation Button - Default Disabled Style
+                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full rounded-none border-t border-gray-800 bg-gray-900 text-gray-700 cursor-not-allowed')
                                 btn.disable()
                                 agent.interrogation_btn = btn # Link button
 
             render_agents_grid() # Initial Render
 
             # Verdict Area
-            with ui.card().classes('w-full h-2/3 tribunal-verdict mt-4 border-red-500 p-0'):
-                ui.label('FINAL JUDGMENT').classes('w-full bg-red-900 text-black font-bold p-2 text-center')
-                verdict_container = ui.scroll_area().classes('w-full h-full bg-black p-4 text-red-500 font-mono whitespace-pre-wrap')
+            with ui.card().classes('w-full h-2/3 tribunal-verdict mt-4 border-red-500 p-0 flex flex-col bg-black'):
+                ui.label('FINAL JUDGMENT').classes('w-full bg-red-900 text-black font-bold p-2 text-center shrink-0')
+                verdict_container = ui.scroll_area().classes('w-full flex-grow bg-black p-4 text-red-500 font-mono whitespace-pre-wrap')
 
     # --- Orchestration Logic ---
     async def run_tribunal():
@@ -442,10 +450,12 @@ async def main_page():
         submit_btn.disable()
         confession_input.disable()
         
-        # Reset Buttons
+        # Reset Buttons to Disabled Style
         for agent in agent_instances:
             if agent.interrogation_btn:
                 agent.interrogation_btn.disable()
+                # Update classes for disabled state
+                agent.interrogation_btn.classes(remove='border-red-500 text-red-500 hover:bg-red-900', add='border-gray-800 bg-gray-900 text-gray-700')
         
         await log_message("INITIATING TRIBUNAL PROTOCOLS...", log_container)
         
@@ -472,10 +482,12 @@ async def main_page():
         
         await log_message("JUDGMENT RENDERED. CASE CLOSED.", log_container)
         
-        # Enable Interrogation Buttons
+        # Enable Interrogation Buttons with Active Style
         for agent in agent_instances:
             if agent.interrogation_btn:
                 agent.interrogation_btn.enable()
+                # Update classes for active state
+                agent.interrogation_btn.classes(remove='border-gray-800 bg-gray-900 text-gray-700', add='border-red-500 text-red-500 hover:bg-red-900')
         
         state.is_processing = False
         submit_btn.enable()
