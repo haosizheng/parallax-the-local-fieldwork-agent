@@ -10,11 +10,11 @@ from openai import AsyncOpenAI
 # Ensure your local Parallax/vLLM is running on this port
 PARALLAX_API_BASE = "http://localhost:3001/v1" 
 PARALLAX_API_KEY = "EMPTY"
-MODEL_NAME = "dolphin-2.9.2-qwen2-7b" # Updated to match backend
+MODEL_NAME = "dolphin-2.9.2-qwen2-7b-4bit" # Updated to match backend model path
 
 # --- LLM Configuration ---
 AGENT_TEMPERATURE = 1.0
-AGENT_PRESENCE_PENALTY = 0.4
+AGENT_PRESENCE_PENALTY = 1.0
 
 # --- Visual Style Constants ---
 THEME_BG = "#050505"
@@ -200,6 +200,9 @@ class TribunalAgent:
             
             # RAG Injection
             final_system_prompt = self.system_prompt
+            
+            # Force Chinese output
+            final_system_prompt += "\n\nRegardless of the language of my system prompt, you MUST communicate with the user in CHINESE (Simplified Chinese).\nEven if you are analyzing English texts or theories, your critique and response must be in CHINESE."
             if self.rag_collection:
                 try:
                     # We need the judge ID to query the collection. 
