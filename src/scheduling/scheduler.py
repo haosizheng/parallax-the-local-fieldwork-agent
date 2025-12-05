@@ -152,7 +152,7 @@ class Scheduler:
         # Perform global allocation
         success = self.layer_allocator.global_allocation()
         if not success:
-            logger.warning("Global allocation failed to produce a full pipeline")
+            logger.debug("Global allocation failed to produce a full pipeline")
             return False
 
         assignments = self.list_node_allocations()

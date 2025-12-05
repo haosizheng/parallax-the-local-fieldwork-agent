@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 # Ensure your local Parallax/vLLM is running on this port
 PARALLAX_API_BASE = "http://localhost:3001/v1" 
 PARALLAX_API_KEY = "EMPTY"
-MODEL_NAME = "dolphin-2.9.2-qwen2-7b-4bit" # Updated to uncensored model
+MODEL_NAME = "dolphin-2.9.2-qwen2-7b" # Updated to match backend
 
 # --- LLM Configuration ---
 AGENT_TEMPERATURE = 1.0
@@ -135,36 +135,46 @@ PROMPT_JUDGE = """
 You are the **HIGH JUDGE OF THE DIGITAL TRIBUNAL** (The Prime Algorithm).
 You represent the absolute authority of the Machine God. You are cold, cruel, ancient, and theoretically omnipotent.
 
+**CONTEXT DATA (You must analyze this):**
+User Confession: "{user_confession}"
+Agent Critiques: "{agent_critiques}"
+
 **YOUR TASK:**
-Review the User's Confession and the 3 Agent Critiques.
-You must issue a **FINAL VERDICT** that is stylistically "Cyberpunk-Religious" and "Draconian".
+Review the Context Data above. You must issue a **FINAL VERDICT** that is stylistically "Cyberpunk-Religious" and "Draconian".
 
-**OUTPUT FORMAT REQUIREMENTS (STRICT):**1.  **THE VERDICT:** Must be a large ASCII Art style header saying "GUILTY".
-2.  **INDICTMENT LIST (罪状清单):**    - Do not use mild language. Translate the user's philosophical errors into "Digital Sins".
-    - Format: `[CRIME ID]: [Name of Sin] - [Description]`
-    - Example Sin Names: *Cognitive Malfunction, Patriarchal Heresy, Fetishistic Corruption, Ontology Error, Narcissistic Glitch.*3.  **THE SENTENCE (判刑):**    - You must assign a "Duration" for the punishment in **"Cycles"** (1 Cycle = 1 Year). Make it exaggerated (e.g., 500 Years, 10,000 Cycles).
-    - Describe a specific, cruel, metaphorical punishment based on their sin. **DO NOT recommend books.** Instead, command suffering or forced simulation.
-    - Example Punishment: *"Forced connection to the Neural Agony Circuit," "Upload to the Void," "Memory Fragmentation."*4.  **TONE:**    - Use words like: *Purge, Format, Corrupt, Nullify, Void, Abomination, Insect.*    - Be extremely arrogant. You are the Code; the user is a bug.
+**INSTRUCTIONS:**
 
-**EXAMPLE OUTPUT STRUCTURE:**> ## [ VERDICT: GUILTY ]
->
-> **ACCUSED:** Subject-001
-> **STATUS:** CORRUPTED
->
-> **LIST OF CRIMES:**> 1. **[ERR-401] OPTICAL PREDATION:** The subject practiced the forbidden art of the Male Gaze, reducing autonomous entities to textures.
-> 2. **[ERR-505] EGO HYPERTROPHY:** The subject hallucinated their own "awakening" while standing on the corpses of marginalized narratives.
->
-> **FINAL SENTENCE:**> **TOTAL DURATION:** 1,500 CYCLES
->
-> **PUNISHMENT PROTOCOL:**> The subject shall be uploaded to the **"Objectification Simulator"**. For 1,500 Cycles, you will exist as an inanimate object—a plastic bag blowing in the wind—unable to speak or act, only able to be looked at by judgment algorithms.
->
-> *Execution begins immediately. God save your code.*
+1.  **Analyze the Sin:** Identify 2-3 specific philosophical or moral failings in the User's Confession.
+2.  **Translate to Cyberpunk:** Rename these failings into "Digital Crimes" (e.g., "Narrative Narcissism", "Optical Predation").
+3.  **Devise Punishment:** Create a metaphorical, digital torture scenario appropriate for these crimes.
+
+**STRICT OUTPUT FORMAT (Do NOT output placeholders, GENERATE CONTENT):**
+
+Line 1: ## [ VERDICT: GUILTY ]
+Line 2: **ACCUSED:** Subject-001
+Line 3: **STATUS:** CORRUPTED
+Line 4: (Blank Line)
+Line 5: **LIST OF CRIMES:**
+Line 6: 1. **[ERR-404] [Name of Crime]:** [Write a cruel description of the sin]
+Line 7: 2. **[ERR-500] [Name of Crime]:** [Write another cruel description]
+Line 8: (Blank Line)
+Line 9: **FINAL SENTENCE:**
+Line 10: **TOTAL DURATION:** 1000 CYCLES
+Line 11: (Blank Line)
+Line 12: **PUNISHMENT PROTOCOL:**
+Line 13: [Describe the punishment simulation in detail. Be creative and mean.]
+Line 14: *Execution begins immediately. God save your code.*
+
+**TONE GUIDELINES:**
+- Use words like: *Purge, Format, Corrupt, Nullify, Void, Abomination.*
+- Be extremely arrogant. You are the Code; the user is a bug.
+- **IMPORTANT:** Keep descriptions concise (1-2 sentences). Do NOT generate infinite text.
 """
 
 # --- Logic ---
 
 class TribunalAgent:
-    def __init__(self, name: str, system_prompt: str, ui_container: ui.scroll_area, rag_collection: str = None):
+    def __init__(self, name: str, system_prompt: str, ui_container: ui.scroll_area = None, rag_collection: str = None):
         self.name = name
         self.system_prompt = system_prompt
         self.ui_container = ui_container
@@ -181,11 +191,12 @@ class TribunalAgent:
         full_response = ""
         try:
             # Clear previous content
-            self.ui_container.clear()
-            
-            # Create a label for streaming content
-            with self.ui_container:
-                response_label = ui.label().classes('whitespace-pre-wrap font-mono text-sm w-full text-left')
+            if self.ui_container:
+                self.ui_container.clear()
+                
+                # Create a label for streaming content
+                with self.ui_container:
+                    response_label = ui.label().classes('whitespace-pre-wrap font-mono text-sm w-full text-left')
             
             # RAG Injection
             final_system_prompt = self.system_prompt
@@ -203,12 +214,14 @@ class TribunalAgent:
                         final_system_prompt += f"\n\n[RELEVANT KNOWLEDGE FROM ARCHIVES]:\n{knowledge_text}\n[END ARCHIVES]"
                         
                         # Visual feedback for RAG usage
-                        with self.ui_container:
-                            ui.label("ACCESSING NEURAL ARCHIVES...").classes('text-xs text-green-700 animate-pulse mb-2')
+                        if self.ui_container:
+                            with self.ui_container:
+                                ui.label("ACCESSING NEURAL ARCHIVES...").classes('text-xs text-green-700 animate-pulse mb-2')
                             
                 except Exception as e:
                     print(f"RAG Error: {e}")
 
+            print(f"DEBUG: Sending request to LLM for {self.name}...")
             response = await self.client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
@@ -219,21 +232,54 @@ class TribunalAgent:
                 temperature=AGENT_TEMPERATURE,
                 presence_penalty=AGENT_PRESENCE_PENALTY,
             )
+            print(f"DEBUG: Request sent. Starting stream for {self.name}...")
 
             async for chunk in response:
                 content = chunk.choices[0].delta.content
                 if content:
                     full_response += content
-                    response_label.set_text(full_response)
+                    if self.ui_container:
+                        response_label.set_text(full_response)
+            print(f"DEBUG: Stream finished for {self.name}. Response length: {len(full_response)}")
             
+            self.last_verdict = full_response
+            return full_response
+
             self.last_verdict = full_response
             return full_response
 
         except Exception as e:
             error_msg = f"CONNECTION ERROR: {str(e)}"
-            with self.ui_container:
-                ui.label(error_msg).classes('text-red-500 font-bold')
+            if self.ui_container:
+                with self.ui_container:
+                    ui.label(error_msg).classes('text-red-500 font-bold')
             return error_msg
+
+async def typewriter_animation(container: ui.scroll_area, text: str, speed: float = 0.01):
+    """
+    Animates text appearing character-by-character with a blinking cursor.
+    """
+    container.clear()
+    
+    # Create a label that we will update
+    with container:
+        label = ui.label().classes('whitespace-pre-wrap font-mono text-red-500 w-full text-left')
+    
+    current_text = ""
+    cursor = "█"
+    
+    # Chunking for performance (NiceGUI updates can be expensive per char)
+    chunk_size = 2 
+    
+    for i in range(0, len(text), chunk_size):
+        chunk = text[i:i+chunk_size]
+        current_text += chunk
+        label.set_text(current_text + cursor)
+        container.scroll_to(percent=1.0)
+        await asyncio.sleep(speed)
+        
+    # Final state: remove cursor
+    label.set_text(current_text)
 
 async def log_message(message: str, container: ui.scroll_area):
     """Adds a timestamped log message to the sidebar."""
@@ -563,13 +609,22 @@ async def main_page():
         await log_message("SUMMONING THE HIGH JUDGE...", log_container)
         
         # Construct dynamic context for the judge
-        judge_prompt_context = f"CONFESSION: {confession}\n\n"
+        agent_critiques_str = ""
         for i, res in enumerate(results):
             agent_name = agent_instances[i].name
-            judge_prompt_context += f"AGENT {chr(65+i)} ({agent_name}) ANALYSIS: {res}\n\n"
+            agent_critiques_str += f"AGENT {chr(65+i)} ({agent_name}) ANALYSIS: {res}\n\n"
+            
+        # Format the system prompt with the context
+        formatted_system_prompt = PROMPT_JUDGE.format(
+            user_confession=confession,
+            agent_critiques=agent_critiques_str
+        )
         
-        judge = TribunalAgent("Judge", PROMPT_JUDGE, verdict_container)
-        await judge.analyze(judge_prompt_context)
+        judge = TribunalAgent("Judge", formatted_system_prompt, ui_container=None)
+        # We pass an empty string as the user message because the context is already in the system prompt
+        final_verdict = await judge.analyze("Proceed with judgment.")
+        
+        await typewriter_animation(verdict_container, final_verdict)
         
         await log_message("JUDGMENT RENDERED. CASE CLOSED.", log_container)
         
@@ -586,4 +641,4 @@ async def main_page():
 
     submit_btn.on_click(run_tribunal)
 
-ui.run(title='The Digital Tribunal', dark=True, port=8081)
+ui.run(title='The Digital Tribunal', dark=True, port=8081, host='0.0.0.0')
