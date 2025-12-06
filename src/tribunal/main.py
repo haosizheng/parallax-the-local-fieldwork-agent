@@ -21,14 +21,27 @@ THEME_BG = "#050505"
 # THEME_BG = "transparent" # Changed from #050505 to allow canvas to show
 THEME_TEXT_MAIN = "#00ff00" 
 THEME_TEXT_ERROR = "#ff0000" 
-THEME_FONT = "'Courier New', Courier, monospace"
+
+# --- FONT CONFIGURATION ---
+# To change the font:
+# 1. Find a font on Google Fonts (https://fonts.google.com/)
+# 2. Copy the @import URL and paste it into GLOBAL_CSS below
+# 3. Update THEME_FONT with the font family name
+THEME_FONT = "'Vend Sans', monospace" 
 
 # --- CSS ---
 GLOBAL_CSS = f"""
+@import url('https://fonts.googleapis.com/css2?family=Forum&family=Geo:ital@0;1&family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=TASA+Explorer:wght@400..800&family=Vend+Sans:ital,wght@0,300..700;1,300..700&family=Zilla+Slab+Highlight:wght@400;700&display=swap');
+    
     body {{
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* Prevent scrollbars */
         background-color: {THEME_BG};
         color: {THEME_TEXT_MAIN};
         font-family: {THEME_FONT};
+        font-weight: 600;
+        letter-spacing: 0px;
     }}
     .nicegui-content {{
         padding: 0;
@@ -40,7 +53,7 @@ GLOBAL_CSS = f"""
     .tribunal-card-header {{
         padding: 8px;
         font-weight: bold;
-        letter-spacing: 1px;
+        letter-spacing: 0px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -69,6 +82,8 @@ GLOBAL_CSS = f"""
     }}
     /* Hide resize handle and ensure full width */
     .q-textarea .q-field__native {{
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
         resize: none;
     }}
     .q-field--outlined .q-field__control:before {{
@@ -258,7 +273,7 @@ class TribunalAgent:
             error_msg = f"CONNECTION ERROR: {str(e)}"
             if self.ui_container:
                 with self.ui_container:
-                    ui.label(error_msg).classes('text-red-500 font-bold')
+                    ui.label(error_msg).classes('text-red-500 ')
             return error_msg
 
 async def typewriter_animation(container: ui.scroll_area, text: str, speed: float = 0.01):
@@ -292,7 +307,7 @@ async def log_message(message: str, container: ui.scroll_area):
     from datetime import datetime
     timestamp = datetime.now().strftime("%H:%M:%S")
     with container:
-        ui.label(f"[{timestamp}] {message}").classes('text-xs  text-green-500')
+        ui.label(f"[{timestamp}]\n{message}").classes('text-xs text-green-500')
     container.scroll_to(percent=1.0)
 
 # --- Interrogation Room Logic ---
@@ -305,13 +320,13 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
         with ui.row().classes('w-full h-full no-wrap'):
             # Left Column: Static Context
             with ui.column().classes('w-1/3 h-full border-r border-green-500 p-4'):
-                ui.label('CASE FILE').classes('text-2xl font-bold mb-4 text-green-500')
+                ui.label('CASE FILE').classes('text-2xl  mb-4 text-green-500')
                 
-                ui.label('SUBJECT CONFESSION:').classes('text-sm font-bold text-green-700 mb-1')
+                ui.label('SUBJECT CONFESSION:').classes('text-sm  text-green-700 mb-1')
                 with ui.scroll_area().classes('w-full h-32 border border-green-900 p-2 mb-4'):
                     ui.label(confession).classes('text-xs  text-green-500 whitespace-pre-wrap w-full break-words')
                 
-                ui.label(f'INITIAL CHARGE ({agent.name.upper()}):').classes('text-sm font-bold text-green-700 mb-1')
+                ui.label(f'INITIAL CHARGE ({agent.name.upper()}):').classes('text-sm  text-green-700 mb-1')
                 with ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2'):
                     ui.label(agent.last_verdict).classes('text-xs  text-green-500 whitespace-pre-wrap w-full break-words')
                 
@@ -319,7 +334,7 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
 
             # Right Column: Chat Stream
             with ui.column().classes('w-2/3 h-full p-4 flex flex-col'):
-                ui.label(f'INTERROGATION LOG // {agent.name.upper()}').classes('text-xl font-bold mb-4 text-green-500 blink')
+                ui.label(f'INTERROGATION LOG // {agent.name.upper()}').classes('text-xl  mb-4 text-green-500 blink')
                 
                 # Chat Container
                 chat_container = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-4 mb-4 bg-black')
@@ -344,14 +359,14 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     timestamp = datetime.now().strftime("%H:%M:%S")
 
                     with chat_container:
-                        ui.label(f"[{timestamp}] SUBJECT:").classes('text-green-700 font-bold text-xs mt-2')
+                        ui.label(f"[{timestamp}] SUBJECT:").classes('text-green-700  text-xs mt-2')
                         ui.label(user_msg).classes('text-green-500  text-sm whitespace-pre-wrap ml-4')
                     
                     messages.append({"role": "user", "content": user_msg})
                     chat_input.value = ''
                     
                     with chat_container:
-                        ui.label(f"[{timestamp}] {agent.name.upper()}:").classes('text-red-700 font-bold text-xs mt-2')
+                        ui.label(f"[{timestamp}] {agent.name.upper()}:").classes('text-red-700  text-xs mt-2')
                         response_label = ui.label().classes('text-red-500  text-sm whitespace-pre-wrap ml-4')
                         spinner = ui.spinner(size='sm').classes('text-red-500 ml-4')
                     
@@ -382,7 +397,7 @@ async def open_interrogation_room(agent: TribunalAgent, confession: str):
                     except Exception as e:
                         spinner.delete()
                         with chat_container:
-                            ui.label(f"ERROR: {e}").classes('text-red-500 font-bold')
+                            ui.label(f"ERROR: {e}").classes('text-red-500 ')
 
                 chat_input.on('keydown.enter', send_message)
 
@@ -509,7 +524,9 @@ async def main_page():
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         with container:
-            ui.label(f"[{timestamp}] {message}").classes('text-xs  text-green-500')
+            # Use ui.markdown for safe rendering with line breaks
+            # Two spaces at end of line or \n creates a line break in markdown
+            ui.markdown(f"**[{timestamp}]**\n{message}").classes('text-xs text-green-500 mb-2 leading-tight')
         container.scroll_to(percent=1.0)
 
     # --- Final Judgment Dialog ---
@@ -517,7 +534,7 @@ async def main_page():
     with judgment_dialog, ui.card().style('width: 90vw; max-width: none; height: 90vh; max-height: none').classes('bg-black border border-red-500 p-0 no-shadow flex flex-col'):
         # Header
         with ui.row().classes('w-full p-4 border-b border-red-500 justify-between items-center shrink-0 bg-red-900'):
-            ui.label('FINAL JUDGMENT RENDERED').classes('text-2xl font-bold text-black glitch-effect')
+            ui.label('FINAL JUDGMENT RENDERED').classes('text-2xl  text-black glitch-effect')
             ui.button(icon='close', on_click=judgment_dialog.close).props('flat dense round text-color=black')
             
         # Verdict Content
@@ -609,14 +626,14 @@ async def main_page():
 
 
     # --- Layout ---
-    with ui.row().classes('w-full h-screen no-wrap gap-0'):
+    with ui.row().classes('w-full h-screen no-wrap gap-0 overflow-hidden'):
         
         # --- Left Sidebar (25%) ---
         with ui.column().classes('w-1/4 h-full p-4 border-r border-green-500 flex flex-col bg-black'):
-            ui.label('SYSTEM LOGS').classes('text-base text-green-500 -mb-6 px-4')
+            ui.label('SYSTEM LOGS').classes('text-base text-green-500 -mb-5 px-4')
             
             # Log Container
-            log_container = ui.scroll_area().classes('w-full flex-grow border-none border-green-900 p-0  text-xs text-green-500 bg-black mb-4')
+            log_container = ui.scroll_area().classes('w-full flex-grow border-none border-green-900 text-xs text-green-500 bg-black mb-4')
             
             # Protocol Database Button (Bottom)
             async def open_manage_database():
@@ -624,12 +641,12 @@ async def main_page():
                 with db_dialog, ui.card().style('width: 70vw; max-width: none').classes('h-3/4 bg-black border border-green-500 p-0 no-shadow'):
                     # Header
                     with ui.row().classes('w-full p-4 border-b border-green-500'):
-                        ui.label('PROTOCOL DATABASE').classes('text-xl font-bold text-green-500')
+                        ui.label('PROTOCOL DATABASE').classes('text-xl  text-green-500')
                     # Main Content Row
                     with ui.row().classes('w-full h-full no-wrap'):
                         # LEFT COLUMN: Create New Protocol
                         with ui.column().classes('w-1/2 h-full p-4 border-r border-green-500 gap-4'):
-                            ui.label('COMPILE NEW PROTOCOL').classes('text-sm font-bold text-green-700')
+                            ui.label('COMPILE NEW PROTOCOL').classes('text-sm  text-green-700')
                             new_name = ui.input('NAME').classes('w-full text-green-500')
                             new_desc = ui.input('DESCRIPTION').classes('w-full text-green-500')
                             new_prompt = ui.textarea('SYSTEM PROMPT').classes('w-full text-green-500 flex-grow').props('input-style="height: 100%"')
@@ -663,18 +680,18 @@ async def main_page():
                             ui.button('COMPILE', on_click=create_judge).classes('w-full border border-green-500 text-green-500 hover:bg-red-900 hover:border-red-500').props('color=none')
                         # RIGHT COLUMN: Existing Protocols
                         with ui.column().classes('w-1/2 h-full p-4'):
-                            ui.label('EXISTING PROTOCOLS').classes('text-sm font-bold text-green-700')
+                            ui.label('EXISTING PROTOCOLS').classes('text-sm  text-green-700')
                             list_scroll = ui.scroll_area().classes('w-full flex-grow border border-green-900 p-2')
                             def refresh_list():
                                 list_scroll.clear()
                                 judges = judge_manager.get_all_judges()
                                 with list_scroll:
-                                    if not judges: ui.label("NO PROTOCOLS FOUND").classes('text-red-500 font-bold')
+                                    if not judges: ui.label("NO PROTOCOLS FOUND").classes('text-red-500 ')
                                     for judge in judges:
                                         with ui.card().classes('w-full p-2 mb-2 border border-green-900 bg-transparent flex-shrink-0'):
                                             with ui.row().classes('w-full justify-between items-center no-wrap'):
                                                 with ui.column().classes('gap-0'):
-                                                    ui.label(judge['name']).classes('font-bold text-green-500')
+                                                    ui.label(judge['name']).classes(' text-green-500')
                                                     ui.label(judge['description']).classes('text-xs text-green-700')
                                                 if not judge.get('is_default', False):
                                                     ui.button(icon='delete', on_click=lambda j=judge: delete_judge(j)).classes('text-red-500').props('flat dense')
@@ -692,13 +709,13 @@ async def main_page():
             
             # Top Section: Agent Grid
             # Using a row with gap for the 3 agents
-            agents_grid = ui.grid(columns=3).classes('w-full gap-4 h-1/2')
+            agents_grid = ui.grid(columns=3).classes('w-full gap-4 flex-grow')
             
             # --- Swap Logic ---
             async def open_swap_dialog(slot_index: int):
                 swap_dialog = ui.dialog()
                 with swap_dialog, ui.card().classes('w-1/2 h-full bg-black rounded-none border border-green-500 p-4'):
-                    ui.label(f'SWAP PROTOCOL FOR AGENT {chr(65+slot_index)}').classes('text-xl font-bold text-green-500 mb-4')
+                    ui.label(f'SWAP PROTOCOL FOR AGENT {chr(65+slot_index)}').classes('text-xl  text-green-500 mb-4')
                     with ui.scroll_area().classes('w-full h-full border rounded-none border-green-900 p-2'):
                         for judge in judge_manager.get_all_judges():
                             def select_judge(j=judge):
@@ -707,7 +724,7 @@ async def main_page():
                                 swap_dialog.close()
                                 ui.notify(f"SLOT {chr(65+slot_index)} UPDATED: {j['name']}", color='green')
                             with ui.card().classes('w-full p-2 mb-2 cursor-pointer border rounded-none border-green-500 hover:bg-green-900').on('click', select_judge):
-                                ui.label(judge['name']).classes('font-bold text-green-500')
+                                ui.label(judge['name']).classes(' text-green-500')
                                 ui.label(judge['description']).classes('text-xs text-green-700')
                 swap_dialog.open()
 
@@ -721,7 +738,7 @@ async def main_page():
                             with ui.column().classes('w-full h-full gap-0 no-wrap'):
                                 # Header with Swap Button
                                 with ui.row().classes('tribunal-card-header w-full bg-transparent text-green-500 justify-between items-center'):
-                                    ui.label(f"AGENT {chr(65+i)}: {judge_data['name'].upper()}").classes('text-xs font-bold')
+                                    ui.label(f"AGENT {chr(65+i)}: {judge_data['name'].upper()}").classes('text-xs ')
                                     ui.button(icon='sync', on_click=lambda idx=i: open_swap_dialog(idx)).props('flat dense round').classes('text-green-500 cursor-pointer').props('color=none')
                                 
                                 container = ui.scroll_area().classes('p-2 w-full flex-grow bg-black border-t border-green-500 text-left')
@@ -731,21 +748,32 @@ async def main_page():
                                 agent_instances.append(agent)
                                 
                                 # Interrogation Button
-                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full font-bold rounded-none border-t border-green-900 text-white bg-gray-700 hover:bg-red-900 cursor-not-allowed').props('color=none')
+                                btn = ui.button('ENTER INTERROGATION', on_click=lambda a=agent: open_interrogation_room(a, confession_input.value)).classes('w-full  rounded-none border-t border-green-900 text-white bg-gray-700 hover:bg-red-900 cursor-not-allowed').props('color=none')
                                 btn.disable()
                                 agent.interrogation_btn = btn # Link button
 
             render_agents_grid() # Initial Render
 
             # Bottom Section: Input & Button
+            # Inject CSS to force placeholder font
+            ui.add_head_html(f'''
+                <style>
+                    textarea::placeholder {{
+                        font-family: {THEME_FONT};
+                        font-weight: 400;
+                        letter-spacing: -0.5px;
+                        opacity: 0.5;
+                    }}
+                </style>
+            ''')
             with ui.column().classes('w-full gap-0'):
-                # ui.label('CONFESSION INPUT').classes('text-green-700 font-bold mb-1')
-                confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-32 bg-transparent border border-green-500 p-2 text-green-500 text-lg mb-4').props('spellcheck="false" borderless')
+                # ui.label('CONFESSION INPUT').classes('text-green-700  mb-1')
+                confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-32 bg-transparent border border-green-500 p-2 text-green-500 text-sm mb-4').props('spellcheck="false" borderless')
                 
                 # Action Button (Dynamic)
                 action_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=run_tribunal).classes('w-full text-xl bg-transparent border border-green-500 text-green-500 rounded-none py-4').props('color=none text-color=green-500')
 
     # Initial Log
-    await log_message("SYSTEM ONLINE. AWAITING INPUT.", log_container)
+    await log_message("SYSTEM ONLINE. AWAITING INPUT...", log_container)
 
 ui.run(title='DIGITAL TRIBUNAL', dark=True, port=8081, host='0.0.0.0')
