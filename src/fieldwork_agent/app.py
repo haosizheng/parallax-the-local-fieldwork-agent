@@ -8,7 +8,7 @@ os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # Suppress tokenizers parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from rag_engine import process_file, get_vectorstore, get_qa_chain
-from anonymizer import analyze_text, highlight_text, extract_risky_sentences, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TEMPLATE
+from anonymizer import analyze_text, highlight_text, extract_risky_sentences, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TEMPLATE, mock_anonymize
 from utils import save_uploaded_file, cleanup_temp_file
 
 st.set_page_config(page_title="Local Fieldwork Agent", layout="wide")
@@ -134,117 +134,128 @@ if mode == "💬 RAG Chat":
                 st.info("Make sure you have indexed a document and Parallax is running.")
 
 # --- MODE 2: Anonymization Checker ---
+# --- MODE 2: Anonymization Checker ---
 elif mode == "🛡️ Anonymization Checker":
-    st.header("🛡️ Anonymization Checker")
-    st.markdown("Identify PII (names, dates, locations) and high-risk combinations in your text.")
+    # --- ZERO-TRUST CSS STYLING ---
+    st.markdown("""
+    <style>
+        /* Monospace font for the entire section */
+        .stTextArea textarea, .stCode, .stMarkdown {
+            font-family: 'Courier New', Courier, monospace !important;
+        }
+        
+        /* Pane Titles */
+        .pane-title-red {
+            color: #ff4b4b;
+            border-bottom: 2px solid #ff4b4b;
+            padding-bottom: 5px;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .pane-title-yellow {
+            color: #ffa726;
+            border-bottom: 2px solid #ffa726;
+            padding-bottom: 5px;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .pane-title-green {
+            color: #00c853;
+            border-bottom: 2px solid #00c853;
+            padding-bottom: 5px;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.title("PII REDACTION PROTOCOL: ZERO-TRUST WORKSTATION")
+    st.markdown("### 🔒 SECURE ENVIRONMENT ACTIVE | NETWORK ISOLATED")
     
-    # Sidebar for Anonymizer
+    # Sidebar for File Upload (to populate session state)
     with st.sidebar:
-        st.header("Anonymizer Settings")
+        st.header("Data Ingestion")
+        anon_file = st.file_uploader("Upload Raw Transcript", type=["txt", "pdf"], key="anon_upload")
         
-        # Chunking Settings for Anonymizer
-        with st.expander("⚙️ Chunking Settings", expanded=False):
-            anon_chunk_size = st.slider("Chunk Size", 500, 5000, 3000, 100, help="Size of text chunks for analysis.")
-            anon_chunk_overlap = st.slider("Chunk Overlap", 0, 1000, 500, 50, help="Overlap between chunks.")
+        if anon_file:
+            # Load file content into session state
+            file_path = save_uploaded_file(anon_file)
+            if file_path:
+                try:
+                    # Simple read for txt, for pdf we might need more logic but let's assume txt for this demo or use existing loader
+                    # Re-using process_file to get text is safest but returns chunks. 
+                    # For this specific UI, let's just read the full text if possible or join chunks.
+                    chunks = process_file(file_path, chunk_size=10000, chunk_overlap=0)
+                    full_text = "\n".join([c.page_content for c in chunks])
+                    st.session_state.raw_transcript = full_text
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+                finally:
+                    cleanup_temp_file(file_path)
+    
+    # Main 3-Pane Layout
+    col1, col2, col3 = st.columns(3)
+    
+    # --- PANE 1: INPUT ---
+    with col1:
+        st.markdown('<div class="pane-title-red">INPUT: RAW SENSITIVE DATA (WARNING)</div>', unsafe_allow_html=True)
         
-        # Prompt Settings
-        with st.expander("📝 Prompt Configuration", expanded=False):
-            system_prompt = st.text_area("System Prompt", value=DEFAULT_SYSTEM_PROMPT, height=150)
-            user_prompt_template = st.text_area("User Prompt Template", value=DEFAULT_USER_PROMPT_TEMPLATE, height=300)
+        # Check if data exists
+        if "raw_transcript" not in st.session_state:
+            st.session_state.raw_transcript = ""
+            
+        # Text Area for Input
+        raw_input = st.text_area("Raw Data Stream", value=st.session_state.raw_transcript, height=400, key="raw_input_area")
+        
+        # Update session state if user types directly
+        if raw_input != st.session_state.raw_transcript:
+            st.session_state.raw_transcript = raw_input
 
-        anon_file = st.file_uploader("Upload File for Analysis", type=["txt", "pdf"], key="anon_upload")
+    # --- PANE 2: STATUS ---
+    with col2:
+        st.markdown('<div class="pane-title-yellow">PII ENTITY STATUS</div>', unsafe_allow_html=True)
+        
+        # Initialize state for results
+        if "redaction_results" not in st.session_state:
+            st.session_state.redaction_results = None
+            
+        # Button
+        if st.button("INITIATE REDACTION", type="primary", use_container_width=True):
+            if st.session_state.raw_transcript:
+                with st.spinner("SCANNING FOR PII..."):
+                    redacted, count, log = mock_anonymize(st.session_state.raw_transcript)
+                    st.session_state.redaction_results = {
+                        "redacted": redacted,
+                        "count": count,
+                        "log": log
+                    }
+            else:
+                st.warning("NO DATA DETECTED")
 
-    # Main Area
-    if anon_file:
-        if st.button("Analyze File Risks"):
-            with st.spinner("Processing file and analyzing risks..."):
-                # Save file temporarily
-                file_path = save_uploaded_file(anon_file)
-                
-                if file_path:
-                    try:
-                        # Process and Chunk using rag_engine's utility
-                        chunks = process_file(file_path, chunk_size=anon_chunk_size, chunk_overlap=anon_chunk_overlap)
-                        st.info(f"File split into {len(chunks)} chunks for analysis.")
-                        
-                        # Analyze each chunk
-                        for i, chunk in enumerate(chunks):
-                            with st.expander(f"Chunk {i+1} Analysis", expanded=True):
-                                st.text(f"Content Preview: {chunk.page_content[:100]}...")
-                                
-                                results = analyze_text(chunk.page_content, system_prompt=system_prompt, user_prompt_template=user_prompt_template)
-                                
-                                # Check for errors
-                                if results and "error" in results[0]:
-                                    st.error("Analysis Failed or returned non-JSON format.")
-                                    st.warning("Raw Output from AI:")
-                                    st.code(results[0].get("raw_content", results[0]["error"]))
-                                else:
-                                    # 1. Sensitive Info Table
-                                    st.markdown("#### 1. 敏感信息表格")
-                                    if results:
-                                        st.table(results)
-                                    else:
-                                        st.success("No PII detected in this chunk.")
+        # Display Results if available
+        if st.session_state.redaction_results:
+            count = st.session_state.redaction_results["count"]
+            log = st.session_state.redaction_results["log"]
+            
+            st.metric("Total PII Entities Detected", count)
+            
+            st.markdown("**Detection Log:**")
+            st.code(log, language="text")
+            
+            if count > 0:
+                st.success("THREATS NEUTRALIZED")
+            else:
+                st.info("NO THREATS FOUND")
 
-                                    # 2. Risky Sentences List
-                                    st.markdown("#### 2. 涉及敏感信息的句子")
-                                    risky_sents = extract_risky_sentences(chunk.page_content, results)
-                                    if risky_sents:
-                                        for idx, sent in enumerate(risky_sents, 1):
-                                            st.markdown(f"**{idx}.** {sent}")
-                                    else:
-                                        st.info("No specific risky sentences found.")
-
-                                    # 3. Original Text (Collapsed)
-                                    with st.expander("3. 原文查看 (点击展开)", expanded=False):
-                                        highlighted_html = highlight_text(chunk.page_content, results)
-                                        st.markdown(highlighted_html, unsafe_allow_html=True)
-                                        
-                                        # Legend
-                                        st.markdown("""
-                                        **Legend:**
-                                        <span style="color: #d32f2f; font-weight: bold;">High Risk</span>
-                                        <span style="color: #f57c00; font-weight: bold;">Medium Risk</span>
-                                        <span style="color: #827717; font-weight: bold;">Low Risk</span>
-                                        """, unsafe_allow_html=True)
-                                        
-                    except Exception as e:
-                        st.error(f"An error occurred: {e}")
-                    finally:
-                        cleanup_temp_file(file_path)
-    else:
-        # Fallback to text area if no file uploaded
-        anonymize_input = st.text_area("Or Paste Text Here:", height=200)
-        if st.button("Analyze Pasted Text"):
-             if anonymize_input:
-                with st.spinner("Analyzing text..."):
-                    results = analyze_text(anonymize_input, system_prompt=system_prompt, user_prompt_template=user_prompt_template)
-                    if results and "error" in results[0]:
-                        st.error("Analysis Failed.")
-                        st.code(results[0].get("raw_content", results[0]["error"]))
-                    else:
-                        # 1. Table
-                        st.markdown("#### 1. 敏感信息表格")
-                        st.table(results)
-                        
-                        # 2. Sentences
-                        st.markdown("#### 2. 涉及敏感信息的句子")
-                        risky_sents = extract_risky_sentences(anonymize_input, results)
-                        if risky_sents:
-                            for idx, sent in enumerate(risky_sents, 1):
-                                st.markdown(f"**{idx}.** {sent}")
-                        
-                        # 3. Original Text
-                        with st.expander("3. 原文查看 (点击展开)", expanded=False):
-                            highlighted_html = highlight_text(anonymize_input, results)
-                            st.markdown(highlighted_html, unsafe_allow_html=True)
-                            
-                            st.markdown("""
-                            **Legend:**
-                            <span style="color: #d32f2f; font-weight: bold;">High Risk</span>
-                            <span style="color: #f57c00; font-weight: bold;">Medium Risk</span>
-                            <span style="color: #827717; font-weight: bold;">Low Risk</span>
-                            """, unsafe_allow_html=True)
-             else:
-                 st.warning("Please upload a file or paste text.")
+    # --- PANE 3: OUTPUT ---
+    with col3:
+        st.markdown('<div class="pane-title-green">OUTPUT: CLEANED DATA (SECURE)</div>', unsafe_allow_html=True)
+        
+        output_text = ""
+        if st.session_state.redaction_results:
+            output_text = st.session_state.redaction_results["redacted"]
+            
+        st.text_area("Secure Data Stream", value=output_text, height=400, key="secure_output_area", disabled=True)

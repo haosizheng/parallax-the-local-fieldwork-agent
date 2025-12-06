@@ -183,3 +183,75 @@ def extract_risky_sentences(text: str, entities: List[Dict[str, Any]]) -> List[s
                 break # Avoid adding same sentence twice if it has multiple entities
                 
     return risky_sentences
+
+def mock_anonymize(text: str) -> tuple[str, int, str]:
+    """
+    Simulate PII detection for demo purposes.
+    Replaces 'Alex', 'Sarah', 'John', and 'Location' with placeholders.
+    """
+    redacted_text = text
+    total_count = 0
+    log_entries = []
+    
+    # Define targets to mock-detect
+    targets = {
+        "Alex": "[NAME_{}]",
+        "Sarah": "[NAME_{}]",
+        "John": "[NAME_{}]",
+        "Location": "[LOCATION_{}]"
+    }
+    
+    # Simple replacement loop
+    for target, placeholder_fmt in targets.items():
+        # Find all occurrences (case-insensitive for simplicity, or exact as requested)
+        # Using re.finditer to handle multiple occurrences
+        matches = list(re.finditer(re.escape(target), redacted_text, re.IGNORECASE))
+        
+        for match in matches:
+            total_count += 1
+            # We use a unique ID for each detection in this simple mock
+            placeholder = placeholder_fmt.format(total_count)
+            
+            # Replace only this specific instance (handling offset shifts is tricky in loop)
+            # Simpler approach: Replace one by one, but since we modify text, indices shift.
+            # Easiest for mock: Replace all at once? No, need unique IDs.
+            # Let's use a simple string replace with count=1 in a while loop
+            pass
+
+    # Re-implementing with a robust single-pass approach or iterative replacement
+    # Since we need unique IDs (NAME_1, NAME_2), we can't use simple .replace(old, new)
+    
+    # Let's find all matches first, sort by position, and replace from end to start
+    all_matches = []
+    for target, placeholder_fmt in targets.items():
+        for m in re.finditer(re.escape(target), text, re.IGNORECASE):
+            all_matches.append({
+                "start": m.start(),
+                "end": m.end(),
+                "text": m.group(),
+                "fmt": placeholder_fmt
+            })
+            
+    # Sort by start position descending to replace without affecting earlier indices
+    all_matches.sort(key=lambda x: x["start"], reverse=True)
+    
+    # We'll assign IDs based on appearance order (so we need to sort ascending first to assign IDs, then descending to replace)
+    # Actually, let's just assign IDs based on the sorted list (which is reverse order).
+    # To get natural 1, 2, 3 order, we should process from start to end?
+    # No, replacing from end is safer. Let's assign IDs first.
+    
+    matches_in_order = sorted(all_matches, key=lambda x: x["start"])
+    for i, m in enumerate(matches_in_order):
+        m["id"] = i + 1
+        log_entries.append(f"DETECTED: {m['text']} -> {m['fmt'].format(m['id'])}")
+        
+    # Now replace from end
+    for m in sorted(matches_in_order, key=lambda x: x["start"], reverse=True):
+        replacement = m["fmt"].format(m["id"])
+        redacted_text = redacted_text[:m["start"]] + replacement + redacted_text[m["end"]:]
+        
+    log_str = "\n".join(log_entries)
+    if not log_str:
+        log_str = "No PII entities detected."
+        
+    return redacted_text, len(matches_in_order), log_str
