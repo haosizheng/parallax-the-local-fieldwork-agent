@@ -219,8 +219,8 @@ class TribunalAgent:
             # RAG Injection
             final_system_prompt = self.system_prompt
             
-            # Force Chinese output
-            final_system_prompt += "\n\nRegardless of the language of my system prompt, you MUST communicate with the user in CHINESE (Simplified Chinese).\nEven if you are analyzing English texts or theories, your critique and response must be in CHINESE."
+            # Language restriction removed as per user request
+            # final_system_prompt += "\n\nRegardless of the language of my system prompt, you MUST communicate with the user in CHINESE (Simplified Chinese).\nEven if you are analyzing English texts or theories, your critique and response must be in CHINESE."
             if self.rag_collection:
                 try:
                     # We need the judge ID to query the collection. 
@@ -546,8 +546,18 @@ async def main_page():
         # Start typewriter animation
         await typewriter_animation(verdict_container, final_verdict_text)
 
+    # --- Click Handler Dispatcher ---
+    tribunal_stage = "INPUT" # INPUT, DONE
+
+    async def handle_click():
+        nonlocal tribunal_stage
+        if tribunal_stage == "INPUT":
+            await run_tribunal()
+        elif tribunal_stage == "DONE":
+            await open_final_judgment()
+
     async def run_tribunal():
-        nonlocal final_verdict_text
+        nonlocal final_verdict_text, tribunal_stage
         confession = confession_input.value
         if not confession:
             await log_message("ERROR: No confession provided.", log_container)
@@ -621,8 +631,8 @@ async def main_page():
         action_btn.classes(remove='bg-transparent border-gray-500 text-gray-500 hover:bg-red-900 hover:text-white hover:border-red-500', 
                            add='bg-red-600 text-black border-red-500 hover:bg-red-800 hover:text-white')
         
-        # Update Handler
-        action_btn.on_click(open_final_judgment)
+        # Update Stage
+        tribunal_stage = "DONE"
 
 
     # --- Layout ---
@@ -771,7 +781,7 @@ async def main_page():
                 confession_input = ui.textarea(placeholder='CONFESS YOUR SINS HERE...').classes('w-full h-32 bg-transparent border border-green-500 p-2 text-green-500 text-sm mb-4').props('spellcheck="false" borderless')
                 
                 # Action Button (Dynamic)
-                action_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=run_tribunal).classes('w-full text-xl bg-transparent border border-green-500 text-green-500 rounded-none py-4').props('color=none text-color=green-500')
+                action_btn = ui.button('SUBMIT FOR JUDGMENT', on_click=handle_click).classes('w-full text-xl bg-transparent border border-green-500 text-green-500 rounded-none py-4').props('color=none text-color=green-500')
 
     # Initial Log
     await log_message("SYSTEM ONLINE. AWAITING INPUT...", log_container)
