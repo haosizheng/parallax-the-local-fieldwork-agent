@@ -13,7 +13,7 @@ from utils import save_uploaded_file, cleanup_temp_file
 
 st.set_page_config(page_title="Local Fieldwork Agent", layout="wide")
 
-st.title("Local Fieldwork Agent 🕵️‍♂️")
+st.title("Local Fieldwork Agent")
 st.markdown("### Secure, Local RAG for Qualitative Research")
 
 # Sidebar Navigation
@@ -63,7 +63,7 @@ if mode == "💬 RAG Chat":
             st.success("✅ Document Indexed and Ready")
 
     # Main Chat Interface
-    st.header("Ask Questions")
+    # st.header("Ask Questions")
 
     # Initialize chat history
     if "messages" not in st.session_state:
@@ -181,20 +181,32 @@ elif mode == "🛡️ Anonymization Checker":
         anon_file = st.file_uploader("Upload Raw Transcript", type=["txt", "pdf"], key="anon_upload")
         
         if anon_file:
-            # Load file content into session state
-            file_path = save_uploaded_file(anon_file)
-            if file_path:
-                try:
-                    # Simple read for txt, for pdf we might need more logic but let's assume txt for this demo or use existing loader
-                    # Re-using process_file to get text is safest but returns chunks. 
-                    # For this specific UI, let's just read the full text if possible or join chunks.
-                    chunks = process_file(file_path, chunk_size=10000, chunk_overlap=0)
-                    full_text = "\n".join([c.page_content for c in chunks])
-                    st.session_state.raw_transcript = full_text
-                except Exception as e:
-                    st.error(f"Error reading file: {e}")
-                finally:
-                    cleanup_temp_file(file_path)
+            # Check if this is a new file to avoid re-reading on every rerun
+            # We also check if raw_transcript is empty, in case state was lost but file uploader persists
+            if "last_uploaded_file" not in st.session_state or st.session_state.last_uploaded_file != anon_file.name or not st.session_state.get("raw_transcript"):
+                print(f"DEBUG: Processing uploaded file: {anon_file.name}")
+                # Load file content into session state
+                file_path = save_uploaded_file(anon_file)
+                if file_path:
+                    try:
+                        chunks = process_file(file_path, chunk_size=10000, chunk_overlap=0)
+                        full_text = "\n".join([c.page_content for c in chunks])
+                        print(f"DEBUG: File read successfully. Length: {len(full_text)}")
+                        
+                        st.session_state.raw_transcript = full_text
+                        st.session_state.last_uploaded_file = anon_file.name
+                        
+                        # CRITICAL: Update the text area widget state directly
+                        st.session_state['raw_input_area'] = full_text
+                        
+                        st.rerun() # Force rerun to update the text area immediately
+                    except Exception as e:
+                        st.error(f"Error reading file: {e}")
+                        print(f"DEBUG: Error reading file: {e}")
+                    finally:
+                        cleanup_temp_file(file_path)
+            else:
+                 print("DEBUG: File already processed, skipping.")
     
     # Main 3-Pane Layout
     col1, col2, col3 = st.columns(3)
@@ -224,9 +236,16 @@ elif mode == "🛡️ Anonymization Checker":
             
         # Button
         if st.button("INITIATE REDACTION", type="primary", use_container_width=True):
-            if st.session_state.raw_transcript:
+            # Debug prints
+            print(f"DEBUG: raw_transcript in state: '{st.session_state.get('raw_transcript', 'NOT FOUND')}'")
+            print(f"DEBUG: raw_input variable: '{raw_input}'")
+            
+            # Use raw_input directly as it reflects the current text area value
+            text_to_process = raw_input if raw_input else st.session_state.get("raw_transcript", "")
+            
+            if text_to_process:
                 with st.spinner("SCANNING FOR PII..."):
-                    redacted, count, log = mock_anonymize(st.session_state.raw_transcript)
+                    redacted, count, log = mock_anonymize(text_to_process)
                     st.session_state.redaction_results = {
                         "redacted": redacted,
                         "count": count,
