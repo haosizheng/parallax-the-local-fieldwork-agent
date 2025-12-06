@@ -72,8 +72,10 @@ def analyze_text(text: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT, user_pro
     ]
 
     try:
+        print("DEBUG: Sending request to LLM...")
         response = llm.invoke(messages)
         content = response.content.strip()
+        print(f"DEBUG: Raw LLM Response: {content[:200]}...") # Print first 200 chars
         
         # Attempt to clean markdown code blocks if present
         if "```json" in content:
@@ -82,9 +84,11 @@ def analyze_text(text: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT, user_pro
             content = content.split("```")[1].split("```")[0].strip()
             
         entities = json.loads(content)
+        print(f"DEBUG: Parsed Entities: {len(entities)}")
         return entities
     except json.JSONDecodeError:
         print("Failed to parse JSON response.")
+        print(f"DEBUG: Failed Content: {content}")
         return [{"error": "JSON Parsing Failed", "raw_content": content}]
     except Exception as e:
         print(f"Error during analysis: {e}")
@@ -255,3 +259,48 @@ def mock_anonymize(text: str) -> tuple[str, int, str]:
         log_str = "No PII entities detected."
         
     return redacted_text, len(matches_in_order), log_str
+
+def redact_text_for_display(text: str, entities: List[Dict[str, Any]]) -> str:
+    """
+    Redact entities in the text with placeholders like [REDACTED: TYPE] for plain text display.
+    """
+    # Filter out errors
+    valid_entities = []
+    for e in entities:
+        if "entity" in e and e["entity"] in text:
+            valid_entities.append(e)
+        else:
+            print(f"DEBUG: REJECTED Entity: '{e.get('entity', 'UNKNOWN')}' - In text? {e.get('entity', '') in text}")
+            
+    print(f"DEBUG: redact_text_for_display - Total entities: {len(entities)}, Valid entities: {len(valid_entities)}")
+    
+    # Sort by length descending to replace longest matches first
+    valid_entities.sort(key=lambda x: len(x["entity"]), reverse=True)
+    
+    redacted_text = text
+    
+    # Use a placeholder strategy similar to highlight_text
+    replacements = {}
+    
+    for i, item in enumerate(valid_entities):
+        entity = item["entity"]
+        entity_type = item.get("type", "PII").upper()
+        # Simplify type for display
+        if "PII" in entity_type:
+            display_type = "PII"
+        elif "COMBO" in entity_type:
+            display_type = "RISK_COMBO"
+        else:
+            display_type = entity_type
+            
+        token = f"__ENTITY_{i}__"
+        replacement = f"[REDACTED: {display_type}]"
+        
+        replacements[token] = replacement
+        redacted_text = redacted_text.replace(entity, token)
+        
+    # Swap tokens back to placeholders
+    for token, replacement in replacements.items():
+        redacted_text = redacted_text.replace(token, replacement)
+        
+    return redacted_text

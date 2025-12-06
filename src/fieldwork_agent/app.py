@@ -8,7 +8,7 @@ os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 # Suppress tokenizers parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from rag_engine import process_file, get_vectorstore, get_qa_chain
-from anonymizer import analyze_text, highlight_text, extract_risky_sentences, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TEMPLATE, mock_anonymize
+from anonymizer import analyze_text, highlight_text, extract_risky_sentences, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TEMPLATE, mock_anonymize, redact_text_for_display
 from utils import save_uploaded_file, cleanup_temp_file
 
 st.set_page_config(page_title="Local Fieldwork Agent", layout="wide")
@@ -175,9 +175,19 @@ elif mode == "🛡️ Anonymization Checker":
     st.title("PII REDACTION PROTOCOL: ZERO-TRUST WORKSTATION")
     st.markdown("### 🔒 SECURE ENVIRONMENT ACTIVE | NETWORK ISOLATED")
     
+    # Initialize default prompts
+    system_prompt = DEFAULT_SYSTEM_PROMPT
+    user_prompt_template = DEFAULT_USER_PROMPT_TEMPLATE
+
     # Sidebar for File Upload (to populate session state)
     with st.sidebar:
         st.header("Data Ingestion")
+        
+        # Prompt Settings
+        with st.expander("📝 Prompt Configuration", expanded=False):
+            system_prompt = st.text_area("System Prompt", value=DEFAULT_SYSTEM_PROMPT, height=150)
+            user_prompt_template = st.text_area("User Prompt Template", value=DEFAULT_USER_PROMPT_TEMPLATE, height=300)
+
         anon_file = st.file_uploader("Upload Raw Transcript", type=["txt", "pdf"], key="anon_upload")
         
         if anon_file:
@@ -244,13 +254,39 @@ elif mode == "🛡️ Anonymization Checker":
             text_to_process = raw_input if raw_input else st.session_state.get("raw_transcript", "")
             
             if text_to_process:
-                with st.spinner("SCANNING FOR PII..."):
-                    redacted, count, log = mock_anonymize(text_to_process)
+                with st.spinner("SCANNING FOR PII (AI ANALYSIS)..."):
+                    # Use REAL AI Analysis
+                    results = analyze_text(text_to_process, system_prompt=system_prompt, user_prompt_template=user_prompt_template)
+                    
+                    # Handle potential errors
+                    if results and "error" in results[0]:
+                        st.error("AI Analysis Failed")
+                        log = f"ERROR: {results[0].get('raw_content', results[0]['error'])}"
+                        redacted = text_to_process
+                        count = 0
+                    else:
+                        # Generate Redacted Text
+                        redacted = redact_text_for_display(text_to_process, results)
+                        print(f"DEBUG: Redacted text length: {len(redacted)}")
+                        count = len(results)
+                        
+                        # Generate Log
+                        log_lines = []
+                        for i, item in enumerate(results):
+                            entity = item.get("entity", "Unknown")
+                            etype = item.get("type", "Unknown")
+                            risk = item.get("risk_level", "Unknown")
+                            log_lines.append(f"[{i+1}] {entity} ({etype}) - {risk}")
+                        log = "\n".join(log_lines) if log_lines else "No PII detected by AI."
+
                     st.session_state.redaction_results = {
                         "redacted": redacted,
                         "count": count,
                         "log": log
                     }
+                    
+                    # CRITICAL: Update the output widget state directly to ensure it displays
+                    st.session_state['secure_output_area'] = redacted
             else:
                 st.warning("NO DATA DETECTED")
 
